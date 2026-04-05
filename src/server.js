@@ -1,14 +1,13 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const axios = require('axios');
-const cheerio = require('cheerio');
 const cron = require('node-cron');
 const path = require('path');
 const { Parser } = require('json2csv');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const PASS = process.env.DASHBOARD_PASSWORD || 'planning2025';
 
@@ -26,56 +25,39 @@ db.serialize(function() {
   db.run('CREATE TABLE IF NOT EXISTS scrape_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ran_at TEXT, lpa TEXT, found INTEGER, qualified INTEGER, error TEXT)');
 });
 
-async function scrapeElmbridge() {
-  var results = [];
-  try {
-    var r = await axios.get('https://publicaccess.elmbridge.gov.uk/online-applications/search.do?action=weeklyList&searchType=Application', { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    var $ = cheerio.load(r.data);
-    $('li.searchresult').each(function(i, el) {
-      var ref = $(el).find('.reference').text().trim();
-      var address = $(el).find('.address').text().trim();
-      var desc = $(el).find('.description').text().trim();
-      var date = $(el).find('.date').text().trim();
-      var link = $(el).find('a').attr('href') || '';
-      if (ref) results.push({ ref: ref, address: address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: 'https://publicaccess.elmbridge.gov.uk' + link, lpa: 'Elmbridge' });
-    });
-  } catch(e) { console.error('Elmbridge error:', e.message); }
-  return results;
-}
+var LPA_CODES = {
+  'Elmbridge': 'elmbridge',
+  'Richmond': 'richmond-upon-thames',
+  'Merton': 'merton'
+};
 
-async function scrapeRichmond() {
+async function scrapeViaAPI(lpaName, lpaCode) {
   var results = [];
   try {
-    var r = await axios.get('https://www2.richmond.gov.uk/PlanningApplications/search.aspx', { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    var $ = cheerio.load(r.data);
-    $('table.results tr').slice(1).each(function(i, el) {
-      var cells = $(el).find('td');
-      var ref = $(cells[0]).text().trim();
-      var address = $(cells[2]).text().trim();
-      var desc = $(cells[3]).text().trim();
-      var date = $(cells[1]).text().trim();
-      var link = $(cells[0]).find('a').attr('href') || '';
-      if (ref) results.push({ ref: ref, address: address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: 'https://www2.richmond.gov.uk' + link, lpa: 'Richmond' });
-    });
-  } catch(e) { console.error('Richmond error:', e.message); }
-  return results;
-}
-
-async function scrapeMerton() {
-  var results = [];
-  try {
-    var r = await axios.get('https://planning.merton.gov.uk/Northgate/PlanningExplorer/GeneralSearch.aspx', { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    var $ = cheerio.load(r.data);
-    $('table#tblResults tr').slice(1).each(function(i, el) {
-      var cells = $(el).find('td');
-      var ref = $(cells[0]).text().trim();
-      var address = $(cells[1]).text().trim();
-      var desc = $(cells[2]).text().trim();
-      var date = $(cells[3]).text().trim();
-      var link = $(cells[0]).find('a').attr('href') || '';
-      if (ref) results.push({ ref: ref, address: address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: link, lpa: 'Merton' });
-    });
-  } catch(e) { console.error('Merton error:', e.message); }
+    var sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - 7);
+    var year = sinceDate.getFullYear();
+    var month = sinceDate.getMonth() + 1;
+    var day = sinceDate.getDate();
+    var url = 'https://www.planning.data.gov.uk/api/v1/planning-application/?local-planning-authority=' + lpaCode + '&start_date_year=' + year + '&start_date_month=' + month + '&start_date_day=' + day + '&start_date_match=since&limit=100';
+    var response = await axios.get(url, { timeout: 20000, headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } });
+    var items = response.data.entities || response.data.results || response.data || [];
+    if (Array.isArray(items)) {
+      items.forEach(function(item) {
+        var ref = item.reference || item.ref || item['application-reference'] || '';
+        var address = item.address || item['site-address'] || item.location || '';
+        var desc = item.description || item['development-description'] || '';
+        var date = item['entry-date'] || item['start-date'] || item.date || '';
+        var portalUrl = item.documentation_url || item['documentation-url'] || '';
+        if (ref || address) {
+          results.push({ ref: ref, address: address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: portalUrl, lpa: lpaName });
+        }
+      });
+    }
+    console.log(lpaName + ' API returned ' + results.length + ' applications');
+  } catch(e) {
+    console.error(lpaName + ' API error:', e.message);
+  }
   return results;
 }
 
@@ -88,7 +70,7 @@ async function classifyApplications(apps) {
   for (var c = 0; c < chunks.length; c++) {
     var chunk = chunks[c];
     try {
-      var prompt = 'You are a property development lead qualifier. For each planning application below, return a JSON array. Fields: app_type (large_extension/selfbuild/conversion/loft_complex/other), est_value_min (integer GBP), est_value_max (integer GBP), priority_score (0-100), no_agent (1 or 0), signals (array of 3 short strings), qualified (true if est_value_min >= 150000). Applications: ' + JSON.stringify(chunk.map(function(a) { return { ref: a.ref, description: a.description, agent: a.agent, address: a.address }; })) + ' Return ONLY a JSON array, no markdown.';
+      var prompt = 'You are a property development lead qualifier for a design-and-build contractor in Surrey/SW London. For each planning application below, return a JSON array. Fields: app_type (large_extension/selfbuild/conversion/loft_complex/other), est_value_min (integer GBP build cost), est_value_max (integer GBP build cost), priority_score (0-100, higher if large scope/no agent/premium area), no_agent (1 or 0), signals (array of up to 3 short strings), qualified (true if est_value_min >= 150000). Applications: ' + JSON.stringify(chunk.map(function(a) { return { ref: a.ref, description: a.description, address: a.address }; })) + ' Return ONLY a JSON array, no markdown.';
       var response = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
       var text = response.content[0].text.replace(/```json|```/g, '').trim();
       var results = JSON.parse(text);
@@ -96,6 +78,7 @@ async function classifyApplications(apps) {
         if (chunk[j]) classified.push(Object.assign({}, chunk[j], results[j], { signals: JSON.stringify(results[j].signals || []) }));
       }
     } catch(e) {
+      console.error('Classification error:', e.message);
       for (var k = 0; k < chunk.length; k++) classified.push(Object.assign({}, chunk[k], { app_type: 'unknown', est_value_min: 0, est_value_max: 0, priority_score: 50, no_agent: 0, signals: '[]' }));
     }
   }
@@ -111,7 +94,7 @@ async function saveLeads(leads) {
     var lrUrl = m ? 'https://search.landregistry.gov.uk/app/search#?query=' + encodeURIComponent(l.address) : '';
     try {
       var result = await dbRun('INSERT OR IGNORE INTO leads (ref,lpa,address,applicant,agent,description,date_submitted,date_scraped,app_type,est_value_min,est_value_max,priority_score,no_agent,signals,land_registry_url,portal_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [l.ref,l.lpa,l.address||'',l.applicant||'',l.agent||'',l.description||'',l.date_submitted||'',now,l.app_type||'unknown',l.est_value_min||0,l.est_value_max||0,l.priority_score||0,l.no_agent||0,l.signals||'[]',lrUrl,l.portal_url||'']);
+        [l.ref||'',l.lpa,l.address||'',l.applicant||'',l.agent||'',l.description||'',l.date_submitted||'',now,l.app_type||'unknown',l.est_value_min||0,l.est_value_max||0,l.priority_score||0,l.no_agent||0,l.signals||'[]',lrUrl,l.portal_url||'']);
       if (result.changes) saved++;
     } catch(e) { console.error('Save error:', e.message); }
   }
@@ -120,17 +103,19 @@ async function saveLeads(leads) {
 
 async function runScrape() {
   console.log('Running scrape:', new Date().toISOString());
-  var scrapers = [{ name: 'Elmbridge', fn: scrapeElmbridge }, { name: 'Richmond', fn: scrapeRichmond }, { name: 'Merton', fn: scrapeMerton }];
-  for (var i = 0; i < scrapers.length; i++) {
-    var name = scrapers[i].name;
-    var fn = scrapers[i].fn;
+  var lpas = Object.keys(LPA_CODES);
+  for (var i = 0; i < lpas.length; i++) {
+    var name = lpas[i];
+    var code = LPA_CODES[name];
     try {
-      var raw = await fn();
+      var raw = await scrapeViaAPI(name, code);
       var classified = await classifyApplications(raw);
       var qualified = classified.filter(function(a) { return a.est_value_min >= 150000 || a.qualified; });
       var saved = await saveLeads(qualified);
       await dbRun('INSERT INTO scrape_log (ran_at,lpa,found,qualified) VALUES (?,?,?,?)', [new Date().toISOString(), name, raw.length, saved]);
+      console.log(name + ': found ' + raw.length + ', qualified ' + qualified.length + ', saved ' + saved);
     } catch(e) {
+      console.error(name + ' scrape failed:', e.message);
       await dbRun('INSERT INTO scrape_log (ran_at,lpa,found,qualified,error) VALUES (?,?,?,?,?)', [new Date().toISOString(), name, 0, 0, e.message]);
     }
   }
