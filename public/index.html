@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planning Lead Monitor</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;background:#f5f5f3;color:#1a1a1a;}
+  
+  /* Login */
+  #login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f5f3;}
+  .login-card{background:#fff;border:1px solid #e0e0dc;border-radius:12px;padding:2.5rem;width:340px;}
+  .login-card h1{font-size:20px;font-weight:600;margin-bottom:6px;}
+  .login-card p{font-size:13px;color:#666;margin-bottom:1.5rem;}
+  .login-card input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:10px;}
+  .login-card button{width:100%;padding:10px;background:#1a1a1a;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;}
+  .login-card button:hover{background:#333;}
+  .err{color:#c0392b;font-size:12px;margin-top:6px;}
+
+  /* App */
+  #app{display:none;}
+  header{background:#fff;border-bottom:1px solid #e0e0dc;padding:0 1.5rem;display:flex;align-items:center;gap:1rem;height:56px;}
+  header h1{font-size:16px;font-weight:600;flex:1;}
+  header .last-run{font-size:12px;color:#888;}
+  .btn{padding:8px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;white-space:nowrap;}
+  .btn:hover{background:#f5f5f3;}
+  .btn-primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}
+  .btn-primary:hover{background:#333;}
+  .btn-green{background:#27500A;color:#fff;border-color:#27500A;}
+  .btn-green:hover{background:#3B6D11;}
+
+  /* Stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:1.25rem 1.5rem;}
+  .stat{background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:14px 16px;}
+  .stat-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+  .stat-val{font-size:24px;font-weight:600;}
+  .stat-val.green{color:#27500A;}
+
+  /* Filters */
+  .filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 1.5rem 1rem;align-items:center;}
+  .filters select,.filters input{padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;}
+  .filters input{width:220px;}
+  .filters .spacer{flex:1;}
+  .badge-contacted{background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;}
+
+  /* Table */
+  .table-wrap{padding:0 1.5rem 1.5rem;overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e0e0dc;border-radius:10px;overflow:hidden;}
+  th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#888;padding:10px 14px;background:#fafaf8;border-bottom:1px solid #e0e0dc;text-align:left;white-space:nowrap;}
+  td{padding:11px 14px;border-bottom:1px solid #f0f0ec;vertical-align:top;font-size:13px;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:#fafaf8;}
+  .lpa-pill{font-size:11px;font-weight:500;padding:2px 8px;border-radius:100px;}
+  .lpa-Elmbridge{background:#E6F1FB;color:#0C447C;}
+  .lpa-Richmond{background:#EEEDFE;color:#3C3489;}
+  .lpa-Merton{background:#E1F5EE;color:#085041;}
+  .type-pill{font-size:11px;font-weight:500;padding:2px 8px;border-radius:100px;background:#FAEEDA;color:#633806;}
+  .no-agent-pill{font-size:11px;font-weight:500;padding:2px 8px;border-radius:100px;background:#FCEBEB;color:#791F1F;}
+  .score-bar{height:6px;border-radius:3px;background:#e0e0dc;width:80px;margin-top:4px;}
+  .score-fill{height:6px;border-radius:3px;}
+  .val-range{font-weight:600;color:#27500A;}
+  .signals{display:flex;flex-direction:column;gap:3px;margin-top:4px;}
+  .sig{display:flex;align-items:center;gap:5px;font-size:11px;color:#555;}
+  .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .desc-cell{max-width:240px;color:#555;}
+  .actions-cell{display:flex;flex-direction:column;gap:4px;}
+  .link-btn{font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;text-decoration:none;color:#1a1a1a;display:inline-block;}
+  .link-btn:hover{background:#f5f5f3;}
+  .mark-btn{font-size:11px;padding:3px 8px;border:1px solid #27500A;border-radius:6px;background:#fff;cursor:pointer;color:#27500A;}
+  .mark-btn:hover{background:#EAF3DE;}
+
+  /* Pagination */
+  .pager{display:flex;align-items:center;justify-content:center;gap:8px;padding:1rem;font-size:13px;color:#666;}
+
+  /* Empty */
+  .empty{text-align:center;padding:3rem;color:#888;}
+
+  /* Loading */
+  .loading{text-align:center;padding:2rem;color:#888;font-size:13px;}
+
+  @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr);}th:nth-child(n+5),td:nth-child(n+5){display:none;}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <h1>Planning lead monitor</h1>
+    <p>Elmbridge · Richmond · Merton</p>
+    <input type="password" id="pwd" placeholder="Password" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <h1>Planning lead monitor</h1>
+    <span class="last-run" id="lastRun"></span>
+    <button class="btn" onclick="scrapeNow()" id="scrapeBtn">Run scan now</button>
+    <button class="btn btn-green" onclick="exportCSV()">Export CSV</button>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="filters">
+    <input type="text" id="search" placeholder="Search address, applicant..." oninput="debounceLoad()">
+    <select id="lpaFilter" onchange="loadLeads()">
+      <option value="all">All LPAs</option>
+      <option value="Elmbridge">Elmbridge</option>
+      <option value="Richmond">Richmond</option>
+      <option value="Merton">Merton</option>
+    </select>
+    <select id="typeFilter" onchange="loadLeads()">
+      <option value="all">All types</option>
+      <option value="large_extension">Large extension</option>
+      <option value="selfbuild">Self-build</option>
+      <option value="conversion">Conversion</option>
+      <option value="loft_complex">Complex loft</option>
+    </select>
+    <select id="sortFilter" onchange="loadLeads()">
+      <option value="date">Newest first</option>
+      <option value="value">Highest value first</option>
+      <option value="score">Priority score</option>
+    </select>
+    <div class="spacer"></div>
+    <span id="resultCount" style="font-size:13px;color:#888;"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>LPA</th>
+          <th>Address</th>
+          <th>Applicant</th>
+          <th>Description</th>
+          <th>Est. value</th>
+          <th>Priority</th>
+          <th>Submitted</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="leadsBody">
+        <tr><td colspan="8" class="loading">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pager" id="pager"></div>
+</div>
+
+<script>
+let SESSION = localStorage.getItem('session') || '';
+let currentPage = 1;
+let debounceTimer;
+
+function api(path, opts={}) {
+  return fetch(path, { headers: { 'x-session': SESSION, 'Content-Type': 'application/json', ...opts.headers }, ...opts })
+    .then(r => { if(r.status===401){logout();}return r.json(); });
+}
+
+async function login() {
+  const pwd = document.getElementById('pwd').value;
+  const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password:pwd}) });
+  const data = await res.json();
+  if (data.token) {
+    SESSION = data.token;
+    localStorage.setItem('session', SESSION);
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadStats();
+    loadLeads();
+  } else {
+    document.getElementById('loginErr').textContent = 'Incorrect password';
+  }
+}
+
+function logout() {
+  localStorage.removeItem('session');
+  location.reload();
+}
+
+async function loadStats() {
+  const s = await api('/api/stats');
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">${s.total}</div></div>
+    <div class="stat"><div class="stat-label">This week</div><div class="stat-val green">${s.thisWeek}</div></div>
+    <div class="stat"><div class="stat-label">No agent listed</div><div class="stat-val">${s.noAgent}</div></div>
+    <div class="stat"><div class="stat-label">Pipeline value</div><div class="stat-val">£${Math.round(s.pipeline/1000000)}m</div></div>
+  `;
+  if (s.lastRun) document.getElementById('lastRun').textContent = 'Last scan: ' + new Date(s.lastRun).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'});
+}
+
+async function loadLeads() {
+  const lpa = document.getElementById('lpaFilter').value;
+  const type = document.getElementById('typeFilter').value;
+  const sort = document.getElementById('sortFilter').value;
+  const search = document.getElementById('search').value;
+  const params = new URLSearchParams({ lpa, type, sort, page: currentPage, limit: 50, search });
+  const { leads, total } = await api('/api/leads?' + params);
+  document.getElementById('resultCount').textContent = total + ' leads';
+  renderLeads(leads);
+  renderPager(total);
+}
+
+function renderLeads(leads) {
+  if (!leads.length) {
+    document.getElementById('leadsBody').innerHTML = '<tr><td colspan="8" class="empty">No leads match your filters</td></tr>';
+    return;
+  }
+  document.getElementById('leadsBody').innerHTML = leads.map(l => {
+    const scoreColor = l.priority_score >= 75 ? '#27500A' : l.priority_score >= 50 ? '#BA7517' : '#888';
+    const typeLabel = {large_extension:'Extension',selfbuild:'Self-build',conversion:'Conversion',loft_complex:'Loft',other:'Other'}[l.app_type] || l.app_type;
+    const valStr = l.est_value_max ? `£${Math.round(l.est_value_min/1000)}k – £${Math.round(l.est_value_max/1000)}k` : '—';
+    const signals = (l.signals||[]).slice(0,2).map(s=>`<div class="sig"><div class="dot" style="background:${s.includes('No')||s.includes('no')||s.includes('without')?'#378ADD':'#639922'}"></div>${s}</div>`).join('');
+    return `<tr id="row-${l.id}" class="${l.contacted?'':''}">
+      <td><span class="lpa-pill lpa-${l.lpa}">${l.lpa}</span></td>
+      <td style="min-width:160px"><div style="font-weight:500">${l.address||'—'}</div>${l.no_agent?'<span class="no-agent-pill" style="margin-top:4px;display:inline-block">No agent</span>':''}</td>
+      <td style="min-width:130px"><div>${l.applicant||'—'}</div><div style="color:#888;font-size:11px;margin-top:2px">${l.agent||''}</div></td>
+      <td class="desc-cell">${(l.description||'').substring(0,120)}${(l.description||'').length>120?'…':''}</td>
+      <td><div class="val-range">${valStr}</div></td>
+      <td>
+        <div style="font-size:13px;font-weight:500;color:${scoreColor}">${l.priority_score}</div>
+        <div class="score-bar"><div class="score-fill" style="width:${l.priority_score}%;background:${scoreColor}"></div></div>
+        <div class="signals">${signals}</div>
+      </td>
+      <td style="white-space:nowrap">${l.date_submitted||l.date_scraped||'—'}</td>
+      <td class="actions-cell">
+        ${l.portal_url?`<a class="link-btn" href="${l.portal_url}" target="_blank">View application</a>`:''}
+        ${l.land_registry_url?`<a class="link-btn" href="${l.land_registry_url}" target="_blank">Land Registry</a>`:''}
+        ${l.contacted
+          ? `<span class="badge-contacted">Contacted</span>`
+          : `<button class="mark-btn" onclick="markContacted(${l.id})">Mark contacted</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPager(total) {
+  const pages = Math.ceil(total / 50);
+  if (pages <= 1) { document.getElementById('pager').innerHTML = ''; return; }
+  document.getElementById('pager').innerHTML = `
+    <button class="btn" onclick="changePage(${currentPage-1})" ${currentPage===1?'disabled':''}>Previous</button>
+    <span>Page ${currentPage} of ${pages}</span>
+    <button class="btn" onclick="changePage(${currentPage+1})" ${currentPage===pages?'disabled':''}>Next</button>
+  `;
+}
+
+function changePage(p) { currentPage = p; loadLeads(); window.scrollTo(0,0); }
+
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => { currentPage=1; loadLeads(); }, 400); }
+
+async function markContacted(id) {
+  await api(`/api/leads/${id}/contact`, { method:'POST', body: JSON.stringify({}) });
+  loadLeads();
+}
+
+async function scrapeNow() {
+  const btn = document.getElementById('scrapeBtn');
+  btn.textContent = 'Scanning...';
+  btn.disabled = true;
+  await api('/api/scrape-now', { method:'POST' });
+  setTimeout(() => { btn.textContent = 'Run scan now'; btn.disabled = false; loadStats(); loadLeads(); }, 8000);
+}
+
+function exportCSV() { window.location.href = '/api/export?session=' + SESSION; }
+
+if (SESSION) {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadStats();
+  loadLeads();
+}
+</script>
+</body>
+</html>
