@@ -1,5 +1,5 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const axios = require('axios');
 const cheerio = require('cheerio');
 const cron = require('node-cron');
@@ -17,10 +17,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // ── Database ──────────────────────────────────────────────────────────────────
-const db = new Database(process.env.DB_PATH || '/data/leads.db');
+const dbPath = process.env.DB_PATH || '/data/leads.db';
+const db = new sqlite3.Database(dbPath);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS leads (
+// Promisify db methods
+const dbRun = (sql, params=[]) => new Promise((res,rej) => db.run(sql, params, function(err){ if(err) rej(err); else res(this); }));
+const dbGet = (sql, params=[]) => new Promise((res,rej) => db.get(sql, params, (err,row) => err ? rej(err) : res(row)));
+const dbAll = (sql, params=[]) => new Promise((res,rej) => db.all(sql, params, (err,rows) => err ? rej(err) : res(rows)));
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS leads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ref TEXT UNIQUE,
     lpa TEXT,
@@ -40,16 +46,16 @@ db.exec(`
     portal_url TEXT,
     contacted INTEGER DEFAULT 0,
     notes TEXT
-  );
-  CREATE TABLE IF NOT EXISTS scrape_log (
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS scrape_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ran_at TEXT,
     lpa TEXT,
     found INTEGER,
     qualified INTEGER,
     error TEXT
-  );
-`);
+  )`);
+});
 
 // ── LPA scrapers ──────────────────────────────────────────────────────────────
 const LPAs = [
@@ -183,22 +189,20 @@ Return ONLY a JSON array, no markdown, no explanation.`;
 }
 
 // ── Save to DB ────────────────────────────────────────────────────────────────
-function saveLeads(leads) {
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO leads
-    (ref, lpa, address, applicant, agent, description, date_submitted, date_scraped,
-     app_type, est_value_min, est_value_max, priority_score, no_agent, signals, land_registry_url, portal_url)
-    VALUES
-    (@ref, @lpa, @address, @applicant, @agent, @description, @date_submitted, @date_scraped,
-     @app_type, @est_value_min, @est_value_max, @priority_score, @no_agent, @signals, @land_registry_url, @portal_url)
-  `);
+async function saveLeads(leads) {
   const now = new Date().toISOString().split('T')[0];
   let saved = 0;
   for (const l of leads) {
     const postcode = extractPostcode(l.address);
     const lrUrl = postcode ? `https://search.landregistry.gov.uk/app/search#?query=${encodeURIComponent(l.address)}` : '';
-    const result = insert.run({ ...l, date_scraped: now, land_registry_url: lrUrl, est_value_min: l.est_value_min || 0, est_value_max: l.est_value_max || 0, priority_score: l.priority_score || 0, no_agent: l.no_agent || 0, signals: l.signals || '[]' });
-    if (result.changes) saved++;
+    try {
+      const result = await dbRun(
+        `INSERT OR IGNORE INTO leads (ref,lpa,address,applicant,agent,description,date_submitted,date_scraped,app_type,est_value_min,est_value_max,priority_score,no_agent,signals,land_registry_url,portal_url)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [l.ref,l.lpa,l.address||'',l.applicant||'',l.agent||'',l.description||'',l.date_submitted||'',now,l.app_type||'unknown',l.est_value_min||0,l.est_value_max||0,l.priority_score||0,l.no_agent||0,l.signals||'[]',lrUrl,l.portal_url||'']
+      );
+      if (result.changes) saved++;
+    } catch(e) { console.error('Save error:', e.message); }
   }
   return saved;
 }
@@ -222,11 +226,11 @@ async function runScrape() {
       const raw = await fn();
       const classified = await classifyApplications(raw);
       const qualified = classified.filter(a => a.est_value_min >= 150000 || a.qualified);
-      const saved = saveLeads(qualified);
-      db.prepare('INSERT INTO scrape_log (ran_at, lpa, found, qualified) VALUES (?,?,?,?)').run(new Date().toISOString(), name, raw.length, saved);
+      const saved = await saveLeads(qualified);
+      await dbRun('INSERT INTO scrape_log (ran_at,lpa,found,qualified) VALUES (?,?,?,?)', [new Date().toISOString(), name, raw.length, saved]);
       console.log(`${name}: found ${raw.length}, qualified ${qualified.length}, saved ${saved} new`);
     } catch (e) {
-      db.prepare('INSERT INTO scrape_log (ran_at, lpa, found, qualified, error) VALUES (?,?,?,?,?)').run(new Date().toISOString(), name, 0, 0, e.message);
+      await dbRun('INSERT INTO scrape_log (ran_at,lpa,found,qualified,error) VALUES (?,?,?,?,?)', [new Date().toISOString(), name, 0, 0, e.message]);
     }
   }
 }
@@ -253,7 +257,7 @@ app.post('/api/login', (req, res) => {
   }
 });
 
-app.get('/api/leads', auth, (req, res) => {
+app.get('/api/leads', auth, async (req, res) => {
   const { lpa, type, sort, page = 1, limit = 50, search } = req.query;
   let sql = 'SELECT * FROM leads WHERE 1=1';
   const params = [];
@@ -263,27 +267,31 @@ app.get('/api/leads', auth, (req, res) => {
   sql += sort === 'value' ? ' ORDER BY est_value_max DESC' : sort === 'score' ? ' ORDER BY priority_score DESC' : ' ORDER BY date_submitted DESC, date_scraped DESC';
   sql += ' LIMIT ? OFFSET ?';
   params.push(Number(limit), (Number(page) - 1) * Number(limit));
-  const leads = db.prepare(sql).all(...params);
-  const total = db.prepare('SELECT COUNT(*) as n FROM leads WHERE 1=1' + (lpa && lpa !== 'all' ? ' AND lpa=?' : '') + (type && type !== 'all' ? ' AND app_type=?' : '')).get(...params.slice(0, -2)).n;
-  res.json({ leads: leads.map(l => ({ ...l, signals: JSON.parse(l.signals || '[]') })), total });
+  const leads = await dbAll(sql, params);
+  const countParams = [];
+  let countSql = 'SELECT COUNT(*) as n FROM leads WHERE 1=1';
+  if (lpa && lpa !== 'all') { countSql += ' AND lpa=?'; countParams.push(lpa); }
+  if (type && type !== 'all') { countSql += ' AND app_type=?'; countParams.push(type); }
+  const countRow = await dbGet(countSql, countParams);
+  res.json({ leads: leads.map(l => ({ ...l, signals: JSON.parse(l.signals || '[]') })), total: countRow.n });
 });
 
-app.get('/api/stats', auth, (req, res) => {
-  const total = db.prepare('SELECT COUNT(*) as n FROM leads').get().n;
-  const thisWeek = db.prepare("SELECT COUNT(*) as n FROM leads WHERE date_scraped >= date('now','-7 days')").get().n;
-  const noAgent = db.prepare('SELECT COUNT(*) as n FROM leads WHERE no_agent=1').get().n;
-  const pipeline = db.prepare('SELECT SUM(est_value_max) as v FROM leads').get().v || 0;
-  const lastRun = db.prepare('SELECT ran_at FROM scrape_log ORDER BY id DESC LIMIT 1').get();
+app.get('/api/stats', auth, async (req, res) => {
+  const total = (await dbGet('SELECT COUNT(*) as n FROM leads')).n;
+  const thisWeek = (await dbGet("SELECT COUNT(*) as n FROM leads WHERE date_scraped >= date('now','-7 days')")).n;
+  const noAgent = (await dbGet('SELECT COUNT(*) as n FROM leads WHERE no_agent=1')).n;
+  const pipeline = (await dbGet('SELECT SUM(est_value_max) as v FROM leads')).v || 0;
+  const lastRun = await dbGet('SELECT ran_at FROM scrape_log ORDER BY id DESC LIMIT 1');
   res.json({ total, thisWeek, noAgent, pipeline, lastRun: lastRun?.ran_at });
 });
 
-app.post('/api/leads/:id/contact', auth, (req, res) => {
-  db.prepare('UPDATE leads SET contacted=1, notes=? WHERE id=?').run(req.body.notes || '', req.params.id);
+app.post('/api/leads/:id/contact', auth, async (req, res) => {
+  await dbRun('UPDATE leads SET contacted=1, notes=? WHERE id=?', [req.body.notes || '', req.params.id]);
   res.json({ ok: true });
 });
 
-app.get('/api/export', auth, (req, res) => {
-  const leads = db.prepare('SELECT * FROM leads ORDER BY date_submitted DESC').all();
+app.get('/api/export', auth, async (req, res) => {
+  const leads = await dbAll('SELECT * FROM leads ORDER BY date_submitted DESC');
   const fields = ['lpa','address','applicant','agent','description','app_type','est_value_min','est_value_max','priority_score','date_submitted','ref','land_registry_url','portal_url','contacted','notes'];
   const parser = new Parser({ fields });
   const csv = parser.parse(leads);
