@@ -1,11 +1,9 @@
 {
   "name": "planning-lead-monitor",
   "version": "1.0.0",
-  "description": "Daily planning application monitor for Elmbridge, Richmond and Merton",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "start": "node src/server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
@@ -15,9 +13,6 @@
     "express": "^4.18.0",
     "json2csv": "^6.0.0-alpha.2",
     "node-cron": "^3.0.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
