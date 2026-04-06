@@ -1,303 +1,128 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const axios = require('axios');
-const cheerio = require('cheerio');
 const cron = require('node-cron');
 const path = require('path');
 const { Parser } = require('json2csv');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'planning2025';
+const PASS = process.env.DASHBOARD_PASSWORD || 'planning2025';
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
-// ── Database ──────────────────────────────────────────────────────────────────
-const db = new Database(process.env.DB_PATH || '/data/leads.db');
+const db = new sqlite3.Database('/tmp/leads.db');
+const dbRun = (s,p) => new Promise((ok,fail) => db.run(s,p||[],function(e){ e?fail(e):ok(this); }));
+const dbGet = (s,p) => new Promise((ok,fail) => db.get(s,p||[],(e,r) => e?fail(e):ok(r)));
+const dbAll = (s,p) => new Promise((ok,fail) => db.all(s,p||[],(e,r) => e?fail(e):ok(r)));
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS leads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ref TEXT UNIQUE,
-    lpa TEXT,
-    address TEXT,
-    applicant TEXT,
-    agent TEXT,
-    description TEXT,
-    date_submitted TEXT,
-    date_scraped TEXT,
-    app_type TEXT,
-    est_value_min INTEGER,
-    est_value_max INTEGER,
-    priority_score INTEGER,
-    no_agent INTEGER,
-    signals TEXT,
-    land_registry_url TEXT,
-    portal_url TEXT,
-    contacted INTEGER DEFAULT 0,
-    notes TEXT
-  );
-  CREATE TABLE IF NOT EXISTS scrape_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ran_at TEXT,
-    lpa TEXT,
-    found INTEGER,
-    qualified INTEGER,
-    error TEXT
-  );
-`);
+db.serialize(function() {
+  db.run('CREATE TABLE IF NOT EXISTS leads (id INTEGER PRIMARY KEY AUTOINCREMENT, ref TEXT UNIQUE, lpa TEXT, address TEXT, postcode TEXT, applicant TEXT, agent TEXT, description TEXT, date_submitted TEXT, date_scraped TEXT, app_type TEXT, is_new_application INTEGER, contract_value_min INTEGER, contract_value_max INTEGER, planning_likelihood INTEGER, planning_notes TEXT, priority_score INTEGER, no_agent INTEGER, signals TEXT, portal_url TEXT, contacted INTEGER DEFAULT 0, notes TEXT)');
+  db.run('CREATE TABLE IF NOT EXISTS scrape_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ran_at TEXT, lpa TEXT, found INTEGER, qualified INTEGER, error TEXT)');
+});
 
-// ── LPA scrapers ──────────────────────────────────────────────────────────────
-const LPAs = [
-  {
-    name: 'Elmbridge',
-    searchUrl: 'https://www.elmbridge.gov.uk/planning/search-for-planning-applications/',
-    weeklyUrl: 'https://publicaccess.elmbridge.gov.uk/online-applications/search.do?action=weeklyList&searchType=Application',
-    portal: 'https://publicaccess.elmbridge.gov.uk/online-applications/'
-  },
-  {
-    name: 'Richmond',
-    searchUrl: 'https://www.richmond.gov.uk/planning',
-    weeklyUrl: 'https://www2.richmond.gov.uk/PlanningApplications/search.aspx?weeklylist=true',
-    portal: 'https://www2.richmond.gov.uk/PlanningApplications/'
-  },
-  {
-    name: 'Merton',
-    searchUrl: 'https://planning.merton.gov.uk/',
-    weeklyUrl: 'https://planning.merton.gov.uk/Northgate/PlanningExplorer/GeneralSearch.aspx',
-    portal: 'https://planning.merton.gov.uk/'
-  }
-];
-
-async function scrapeElmbridge() {
-  const results = [];
-  try {
-    const url = 'https://publicaccess.elmbridge.gov.uk/online-applications/search.do?action=weeklyList&searchType=Application';
-    const { data } = await axios.get(url, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    const $ = cheerio.load(data);
-    $('li.searchresult').each((_, el) => {
-      const ref = $(el).find('.reference').text().trim();
-      const address = $(el).find('.address').text().trim();
-      const desc = $(el).find('.description').text().trim();
-      const date = $(el).find('.date').text().trim();
-      const link = $(el).find('a').attr('href');
-      if (ref) results.push({ ref, address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: 'https://publicaccess.elmbridge.gov.uk' + link, lpa: 'Elmbridge' });
-    });
-  } catch (e) {
-    console.error('Elmbridge scrape error:', e.message);
-  }
-  return results;
-}
-
-async function scrapeRichmond() {
-  const results = [];
-  try {
-    const url = 'https://www2.richmond.gov.uk/PlanningApplications/search.aspx';
-    const { data } = await axios.get(url, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    const $ = cheerio.load(data);
-    $('table.results tr').slice(1).each((_, el) => {
-      const cells = $(el).find('td');
-      const ref = $(cells[0]).text().trim();
-      const address = $(cells[2]).text().trim();
-      const desc = $(cells[3]).text().trim();
-      const date = $(cells[1]).text().trim();
-      const link = $(cells[0]).find('a').attr('href');
-      if (ref) results.push({ ref, address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: link ? 'https://www2.richmond.gov.uk' + link : '', lpa: 'Richmond' });
-    });
-  } catch (e) {
-    console.error('Richmond scrape error:', e.message);
-  }
-  return results;
-}
-
-async function scrapeMerton() {
-  const results = [];
-  try {
-    const url = 'https://planning.merton.gov.uk/Northgate/PlanningExplorer/GeneralSearch.aspx';
-    const { data } = await axios.get(url, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    const $ = cheerio.load(data);
-    $('table#tblResults tr').slice(1).each((_, el) => {
-      const cells = $(el).find('td');
-      const ref = $(cells[0]).text().trim();
-      const address = $(cells[1]).text().trim();
-      const desc = $(cells[2]).text().trim();
-      const date = $(cells[3]).text().trim();
-      const link = $(cells[0]).find('a').attr('href');
-      if (ref) results.push({ ref, address, description: desc, date_submitted: date, applicant: '', agent: '', portal_url: link || '', lpa: 'Merton' });
-    });
-  } catch (e) {
-    console.error('Merton scrape error:', e.message);
-  }
-  return results;
-}
-
-// ── AI classifier ─────────────────────────────────────────────────────────────
-async function classifyApplications(apps) {
-  if (!API_KEY || apps.length === 0) return apps.map(a => ({ ...a, app_type: 'unknown', est_value_min: 0, est_value_max: 0, priority_score: 0, no_agent: 0, signals: '[]' }));
-
-  const client = new Anthropic({ apiKey: API_KEY });
-  const classified = [];
-
-  const chunks = [];
-  for (let i = 0; i < apps.length; i += 10) chunks.push(apps.slice(i, i + 10));
-
-  for (const chunk of chunks) {
-    const prompt = `You are a property development lead qualifier for a design-and-build contractor in Surrey/SW London.
-
-For each planning application below, return a JSON array with one object per application.
-
-Rules:
-- app_type: one of "large_extension", "selfbuild", "conversion", "loft_complex", "other"
-- est_value_min and est_value_max: estimated BUILD cost in GBP (integers). Base on description: loft+dormer=£80k-£120k, two-storey extension=£150k-£250k, basement=£200k-£400k, self-build house=£400k-£900k, conversion to flats=£200k-£600k, pool=+£80k, large garden studio=£50k-£100k
-- priority_score: 0-100. Higher if: no agent listed, self-build, large scope, basement, multiple works combined, pool, premium area
-- no_agent: 1 if no architect or agent name visible, else 0
-- signals: array of up to 3 short strings explaining why this is/isn't a good lead
-- qualified: true if est_value_min >= 150000, false otherwise
-
-Applications:
-${JSON.stringify(chunk.map(a => ({ ref: a.ref, description: a.description, agent: a.agent, address: a.address })))}
-
-Return ONLY a JSON array, no markdown, no explanation.`;
-
-    try {
-      const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-      const text = response.content[0].text.replace(/```json|```/g, '').trim();
-      const results = JSON.parse(text);
-      results.forEach((r, i) => {
-        if (chunk[i]) classified.push({ ...chunk[i], ...r, signals: JSON.stringify(r.signals || []) });
-      });
-    } catch (e) {
-      console.error('Classification error:', e.message);
-      chunk.forEach(a => classified.push({ ...a, app_type: 'unknown', est_value_min: 0, est_value_max: 0, priority_score: 50, no_agent: 0, signals: '[]' }));
-    }
-  }
-  return classified;
-}
-
-// ── Save to DB ────────────────────────────────────────────────────────────────
-function saveLeads(leads) {
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO leads
-    (ref, lpa, address, applicant, agent, description, date_submitted, date_scraped,
-     app_type, est_value_min, est_value_max, priority_score, no_agent, signals, land_registry_url, portal_url)
-    VALUES
-    (@ref, @lpa, @address, @applicant, @agent, @description, @date_submitted, @date_scraped,
-     @app_type, @est_value_min, @est_value_max, @priority_score, @no_agent, @signals, @land_registry_url, @portal_url)
-  `);
-  const now = new Date().toISOString().split('T')[0];
-  let saved = 0;
-  for (const l of leads) {
-    const postcode = extractPostcode(l.address);
-    const lrUrl = postcode ? `https://search.landregistry.gov.uk/app/search#?query=${encodeURIComponent(l.address)}` : '';
-    const result = insert.run({ ...l, date_scraped: now, land_registry_url: lrUrl, est_value_min: l.est_value_min || 0, est_value_max: l.est_value_max || 0, priority_score: l.priority_score || 0, no_agent: l.no_agent || 0, signals: l.signals || '[]' });
-    if (result.changes) saved++;
-  }
-  return saved;
-}
-
-function extractPostcode(address) {
-  const m = address && address.match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}/i);
-  return m ? m[0] : null;
-}
-
-// ── Main scrape job ───────────────────────────────────────────────────────────
-async function runScrape() {
-  console.log('Running scrape job:', new Date().toISOString());
-  const scrapers = [
-    { name: 'Elmbridge', fn: scrapeElmbridge },
-    { name: 'Richmond', fn: scrapeRichmond },
-    { name: 'Merton', fn: scrapeMerton }
-  ];
-
-  for (const { name, fn } of scrapers) {
-    try {
-      const raw = await fn();
-      const classified = await classifyApplications(raw);
-      const qualified = classified.filter(a => a.est_value_min >= 150000 || a.qualified);
-      const saved = saveLeads(qualified);
-      db.prepare('INSERT INTO scrape_log (ran_at, lpa, found, qualified) VALUES (?,?,?,?)').run(new Date().toISOString(), name, raw.length, saved);
-      console.log(`${name}: found ${raw.length}, qualified ${qualified.length}, saved ${saved} new`);
-    } catch (e) {
-      db.prepare('INSERT INTO scrape_log (ran_at, lpa, found, qualified, error) VALUES (?,?,?,?,?)').run(new Date().toISOString(), name, 0, 0, e.message);
-    }
-  }
-}
-
-// Run daily at 7am
-cron.schedule('0 7 * * *', runScrape);
-
-// ── Auth middleware ───────────────────────────────────────────────────────────
-const sessions = new Set();
+var sessions = new Set();
 function auth(req, res, next) {
-  const token = req.headers['x-session'] || req.query.session;
+  var token = req.headers['x-session'] || req.query.session;
   if (sessions.has(token)) return next();
   res.status(401).json({ error: 'Unauthorised' });
 }
 
-// ── API routes ────────────────────────────────────────────────────────────────
-app.post('/api/login', (req, res) => {
-  if (req.body.password === DASHBOARD_PASSWORD) {
-    const token = Math.random().toString(36).slice(2) + Date.now();
+app.post('/api/login', function(req, res) {
+  if (req.body.password === PASS) {
+    var token = Math.random().toString(36).slice(2) + Date.now();
     sessions.add(token);
-    res.json({ token });
+    res.json({ token: token });
   } else {
     res.status(401).json({ error: 'Wrong password' });
   }
 });
 
-app.get('/api/leads', auth, (req, res) => {
-  const { lpa, type, sort, page = 1, limit = 50, search } = req.query;
-  let sql = 'SELECT * FROM leads WHERE 1=1';
-  const params = [];
-  if (lpa && lpa !== 'all') { sql += ' AND lpa=?'; params.push(lpa); }
-  if (type && type !== 'all') { sql += ' AND app_type=?'; params.push(type); }
-  if (search) { sql += ' AND (address LIKE ? OR description LIKE ? OR applicant LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
-  sql += sort === 'value' ? ' ORDER BY est_value_max DESC' : sort === 'score' ? ' ORDER BY priority_score DESC' : ' ORDER BY date_submitted DESC, date_scraped DESC';
-  sql += ' LIMIT ? OFFSET ?';
-  params.push(Number(limit), (Number(page) - 1) * Number(limit));
-  const leads = db.prepare(sql).all(...params);
-  const total = db.prepare('SELECT COUNT(*) as n FROM leads WHERE 1=1' + (lpa && lpa !== 'all' ? ' AND lpa=?' : '') + (type && type !== 'all' ? ' AND app_type=?' : '')).get(...params.slice(0, -2)).n;
-  res.json({ leads: leads.map(l => ({ ...l, signals: JSON.parse(l.signals || '[]') })), total });
+app.post('/api/classify', auth, async function(req, res) {
+  var text = req.body.text;
+  var lpa = req.body.lpa || 'Unknown';
+  if (!text || text.length < 50) return res.status(400).json({ error: 'No text provided' });
+  if (!API_KEY) return res.status(500).json({ error: 'No API key configured' });
+
+  var client = new Anthropic({ apiKey: API_KEY });
+  var prompt = 'You are a property development lead qualifier for a design-and-build contractor in Surrey/SW London. We deliver cost-plus construction projects. Minimum project value £150,000.\n\nExtract every planning application from the text and return a JSON array. ONLY include where contract_value_min >= 150000.\n\nFor each application return:\n- ref: application reference\n- address: full address\n- postcode: postcode if visible\n- applicant: applicant name if visible, else ""\n- agent: architect or agent name if visible, else ""\n- description: full description of works\n- app_type: large_extension / selfbuild / conversion / loft_complex / other\n- is_new_application: true if new application, false if amendment\n- date_submitted: date submitted if visible\n- contract_value_min: min contract value GBP integer (build cost + 20% margin). Use: complex loft=100000, two-storey extension=180000, basement=300000, self-build=550000, conversion to flats=300000, pool=+100000\n- contract_value_max: max contract value GBP integer\n- planning_likelihood: 0-100 probability of planning success\n- planning_notes: one sentence on planning likelihood\n- priority_score: 0-100 overall lead quality\n- no_agent: 1 if no architect or agent listed, 0 otherwise\n- signals: array of exactly 3 short strings\n\nCouncil: ' + lpa + '\n\nText:\n' + text.slice(0, 9000) + '\n\nReturn ONLY valid JSON array. No markdown.';
+
+  try {
+    var response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    var raw = response.content[0].text.replace(/```json|```/g, '').trim();
+    var leads = JSON.parse(raw);
+    res.json({ leads: leads });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.get('/api/stats', auth, (req, res) => {
-  const total = db.prepare('SELECT COUNT(*) as n FROM leads').get().n;
-  const thisWeek = db.prepare("SELECT COUNT(*) as n FROM leads WHERE date_scraped >= date('now','-7 days')").get().n;
-  const noAgent = db.prepare('SELECT COUNT(*) as n FROM leads WHERE no_agent=1').get().n;
-  const pipeline = db.prepare('SELECT SUM(est_value_max) as v FROM leads').get().v || 0;
-  const lastRun = db.prepare('SELECT ran_at FROM scrape_log ORDER BY id DESC LIMIT 1').get();
-  res.json({ total, thisWeek, noAgent, pipeline, lastRun: lastRun?.ran_at });
+app.post('/api/leads/save', auth, async function(req, res) {
+  var leads = req.body.leads;
+  var now = new Date().toISOString().split('T')[0];
+  var saved = 0;
+  for (var i = 0; i < leads.length; i++) {
+    var l = leads[i];
+    try {
+      var result = await dbRun(
+        'INSERT OR IGNORE INTO leads (ref,lpa,address,postcode,applicant,agent,description,date_submitted,date_scraped,app_type,is_new_application,contract_value_min,contract_value_max,planning_likelihood,planning_notes,priority_score,no_agent,signals,portal_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [l.ref||l.address,l.lpa,l.address||'',l.postcode||'',l.applicant||'',l.agent||'',l.description||'',l.date_submitted||'',now,l.app_type||'other',l.is_new_application?1:0,l.contract_value_min||0,l.contract_value_max||0,l.planning_likelihood||0,l.planning_notes||'',l.priority_score||0,l.no_agent||0,JSON.stringify(l.signals||[]),l.portal_url||'']
+      );
+      if (result.changes) saved++;
+    } catch(e) { console.error('Save error:', e.message); }
+  }
+  res.json({ saved: saved });
 });
 
-app.post('/api/leads/:id/contact', auth, (req, res) => {
-  db.prepare('UPDATE leads SET contacted=1, notes=? WHERE id=?').run(req.body.notes || '', req.params.id);
-  res.json({ ok: true });
+app.get('/api/leads', auth, async function(req, res) {
+  var lpa=req.query.lpa, type=req.query.type, sort=req.query.sort, search=req.query.search;
+  var page=Number(req.query.page)||1, limit=Number(req.query.limit)||50;
+  var sql='SELECT * FROM leads WHERE 1=1';
+  var params=[];
+  if (lpa&&lpa!=='all'){sql+=' AND lpa=?';params.push(lpa);}
+  if (type&&type!=='all'){sql+=' AND app_type=?';params.push(type);}
+  if (search){sql+=' AND (address LIKE ? OR description LIKE ? OR applicant LIKE ?)';params.push('%'+search+'%','%'+search+'%','%'+search+'%');}
+  sql+=sort==='value'?' ORDER BY contract_value_max DESC':sort==='planning'?' ORDER BY planning_likelihood DESC':sort==='score'?' ORDER BY priority_score DESC':' ORDER BY date_scraped DESC, date_submitted DESC';
+  sql+=' LIMIT ? OFFSET ?';
+  params.push(limit,(page-1)*limit);
+  var leads=await dbAll(sql,params);
+  var countSql='SELECT COUNT(*) as n FROM leads WHERE 1=1';
+  var countParams=[];
+  if (lpa&&lpa!=='all'){countSql+=' AND lpa=?';countParams.push(lpa);}
+  if (type&&type!=='all'){countSql+=' AND app_type=?';countParams.push(type);}
+  var countRow=await dbGet(countSql,countParams);
+  res.json({leads:leads.map(function(l){return Object.assign({},l,{signals:JSON.parse(l.signals||'[]')});}),total:countRow.n});
 });
 
-app.get('/api/export', auth, (req, res) => {
-  const leads = db.prepare('SELECT * FROM leads ORDER BY date_submitted DESC').all();
-  const fields = ['lpa','address','applicant','agent','description','app_type','est_value_min','est_value_max','priority_score','date_submitted','ref','land_registry_url','portal_url','contacted','notes'];
-  const parser = new Parser({ fields });
-  const csv = parser.parse(leads);
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', `attachment; filename="planning-leads-${new Date().toISOString().split('T')[0]}.csv"`);
+app.get('/api/stats', auth, async function(req, res) {
+  var total=(await dbGet('SELECT COUNT(*) as n FROM leads')).n;
+  var thisWeek=(await dbGet("SELECT COUNT(*) as n FROM leads WHERE date_scraped >= date('now','-7 days')")).n;
+  var noAgent=(await dbGet('SELECT COUNT(*) as n FROM leads WHERE no_agent=1')).n;
+  var pipeline=(await dbGet('SELECT SUM(contract_value_max) as v FROM leads')).v||0;
+  res.json({total:total,thisWeek:thisWeek,noAgent:noAgent,pipeline:pipeline});
+});
+
+app.post('/api/leads/:id/contact', auth, async function(req, res) {
+  await dbRun('UPDATE leads SET contacted=1, notes=? WHERE id=?',[req.body.notes||'',req.params.id]);
+  res.json({ok:true});
+});
+
+app.get('/api/export', auth, async function(req, res) {
+  var leads=await dbAll('SELECT * FROM leads ORDER BY date_submitted DESC');
+  var fields=['lpa','address','postcode','applicant','agent','description','app_type','contract_value_min','contract_value_max','planning_likelihood','planning_notes','priority_score','no_agent','date_submitted','ref','contacted','notes'];
+  var csv=new Parser({fields:fields}).parse(leads);
+  res.setHeader('Content-Type','text/csv');
+  res.setHeader('Content-Disposition','attachment; filename=planning-leads.csv');
   res.send(csv);
 });
 
-app.post('/api/scrape-now', auth, async (req, res) => {
-  res.json({ ok: true, message: 'Scrape started' });
-  runScrape().catch(console.error);
-});
-
-// ── Serve dashboard ───────────────────────────────────────────────────────────
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
-
-app.listen(PORT, () => console.log(`Planning monitor running on port ${PORT}`));
+app.get('*', function(req, res) { res.sendFile(path.join(__dirname, '../public/index.html')); });
+app.listen(PORT, function() { console.log('Planning monitor running on port ' + PORT); });
