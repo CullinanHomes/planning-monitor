@@ -184,15 +184,28 @@ function switchTab(name){
   document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
   document.getElementById('tab-'+name).classList.add('active');
 }
+function fmt(n){
+  if(!n)return '—';
+  if(n>=1000000)return '£'+(n/1000000).toFixed(1).replace(/\.0$/,'')+'m';
+  return '£'+Math.round(n/1000)+'k';
+}
+function fmtPipeline(n){
+  if(!n)return '£0';
+  if(n>=1000000)return '£'+(n/1000000).toFixed(1).replace(/\.0$/,'')+'m';
+  return '£'+Math.round(n/1000)+'k';
+}
 async function loadStats(){
   var s=await api('/api/stats');
-  document.getElementById('stats').innerHTML='<div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">'+s.total+'</div></div><div class="stat"><div class="stat-label">This week</div><div class="stat-val" style="color:#27500A">'+s.thisWeek+'</div></div><div class="stat"><div class="stat-label">No agent</div><div class="stat-val">'+s.noAgent+'</div></div><div class="stat"><div class="stat-label">Pipeline</div><div class="stat-val">£'+Math.round(s.pipeline/1000)+'k</div></div>';
+  document.getElementById('stats').innerHTML=
+    '<div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">'+s.total+'</div></div>'+
+    '<div class="stat"><div class="stat-label">This week</div><div class="stat-val" style="color:#27500A">'+s.thisWeek+'</div></div>'+
+    '<div class="stat"><div class="stat-label">No agent</div><div class="stat-val">'+s.noAgent+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Pipeline</div><div class="stat-val">'+fmtPipeline(s.pipeline)+'</div></div>';
 }
 function typeLabel(t){return{large_extension:'Extension',selfbuild:'Self-build',conversion:'Conversion',loft_complex:'Loft',other:'Other'}[t]||t;}
 function typeClass(t){return{large_extension:'pill-ext',selfbuild:'pill-self',conversion:'pill-conv',loft_complex:'pill-loft',other:'pill-other'}[t]||'pill-other';}
 function scoreColor(s){return s>=75?'#27500A':s>=50?'#BA7517':'#888';}
 function planColor(p){return p>=70?'#27500A':p>=45?'#BA7517':'#E24B4A';}
-function fmt(n){return n?'£'+Math.round(n/1000)+'k':'—';}
 async function loadLeads(){
   var lpa=document.getElementById('lpaFilter').value;
   var type=document.getElementById('typeFilter').value;
