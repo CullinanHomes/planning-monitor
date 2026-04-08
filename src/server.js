@@ -120,3 +120,17 @@ app.get('/api/export', auth, async function(req, res) {
 
 app.get('*', function(req, res) { res.sendFile(path.join(__dirname, '../public/index.html')); });
 app.listen(PORT, function() { console.log('Planning monitor running on port ' + PORT); });
+app.get('*', function(req, res) {
+  app.post('/api/letter', auth, async function(req, res) {
+  var lead = req.body.lead;
+  if (!lead) return res.status(400).json({ error: 'No lead provided' });
+  if (!API_KEY) return res.status(500).json({ error: 'No API key configured' });
+  var client = new Anthropic({ apiKey: API_KEY });
+  var prompt = 'Write a short, professional and warm outreach letter from Cullinan Homes to the following planning applicant. We are a local design-and-build contractor offering a cost-plus service — we handle everything from design through to completion, taking the stress out of the project for the owner.\n\nApplicant name: ' + (lead.applicant || 'the homeowner') + '\nProperty address: ' + (lead.address || '') + '\nDescription of works: ' + (lead.description || '') + '\nProject type: ' + (lead.app_type || '') + '\nEstimated contract value: ' + (lead.contract_value_min ? '£' + Math.round(lead.contract_value_min/1000) + 'k - £' + Math.round(lead.contract_value_max/1000) + 'k' : 'substantial') + '\n\nThe letter should:\n- Be addressed personally if we have a name, otherwise "Dear Homeowner"\n- Reference their specific project naturally\n- Explain what cost-plus means briefly\n- Be concise — 3 short paragraphs maximum\n- End with a clear call to action — a phone call or site visit\n- Be signed off from Oliver Robinson, Cullinan Homes\n- Sound human and local, not like a template\n\nReturn only the letter text, no subject line, no explanation.';
+  try {
+    var response = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 600, messages: [{ role: 'user', content: prompt }] });
+    res.json({ letter: response.content[0].text });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
