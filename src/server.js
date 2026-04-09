@@ -118,10 +118,7 @@ app.get('/api/export', auth, async function(req, res) {
   res.send(csv);
 });
 
-app.get('*', function(req, res) { res.sendFile(path.join(__dirname, '../public/index.html')); });
-app.listen(PORT, function() { console.log('Planning monitor running on port ' + PORT); });
-app.get('*', function(req, res) {
-  app.post('/api/letter', auth, async function(req, res) {
+app.post('/api/letter', auth, async function(req, res) {
   var lead = req.body.lead;
   if (!lead) return res.status(400).json({ error: 'No lead provided' });
   if (!API_KEY) return res.status(500).json({ error: 'No API key configured' });
@@ -134,3 +131,7 @@ app.get('*', function(req, res) {
     res.status(500).json({ error: e.message });
   }
 });
+
+app.get('*', function(req, res) { res.sendFile(path.join(__dirname, '../public/index.html')); });
+
+app.listen(PORT, function() { console.log('Planning monitor running on port ' + PORT); });
