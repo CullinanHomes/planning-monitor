@@ -128,6 +128,11 @@ header h1{font-size:16px;font-weight:600;flex:1;}
     <div class="stats" id="stats"></div>
     <div class="filters">
       <input type="text" id="search" placeholder="Search address, applicant..." oninput="debounce()">
+      <select id="viewFilter" onchange="currentPage=1;loadLeads()">
+        <option value="active">Active leads</option>
+        <option value="archived">Archived</option>
+        <option value="all">All leads</option>
+      </select>
       <select id="lpaFilter" onchange="loadLeads()">
         <option value="all">All LPAs</option>
         <option value="Elmbridge">Elmbridge</option>
@@ -242,7 +247,7 @@ async function loadStats(){
     '<div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">'+s.total+'</div></div>'+
     '<div class="stat"><div class="stat-label">This week</div><div class="stat-val" style="color:#27500A">'+s.thisWeek+'</div></div>'+
     '<div class="stat"><div class="stat-label">No agent</div><div class="stat-val">'+s.noAgent+'</div></div>'+
-    '<div class="stat"><div class="stat-label">Pipeline</div><div class="stat-val">'+fmtPipeline(s.pipeline)+'</div></div>';
+    '<div class="stat"><div class="stat-label">Pipeline</div><div class="stat-val">'+fmtPipeline(s.pipeline)+'</div><div style="font-size:11px;color:#888;margin-top:2px">'+(s.archived||0)+' archived</div></div>';
 }
 function typeLabel(t){return{large_extension:'Extension',selfbuild:'Self-build',conversion:'Conversion',loft_complex:'Loft',other:'Other'}[t]||t;}
 function typeClass(t){return{large_extension:'pill-ext',selfbuild:'pill-self',conversion:'pill-conv',loft_complex:'pill-loft',other:'pill-other'}[t]||'pill-other';}
@@ -256,7 +261,8 @@ async function loadLeads(){
   var type=document.getElementById('typeFilter').value;
   var sort=document.getElementById('sortFilter').value;
   var search=document.getElementById('search').value;
-  var params=new URLSearchParams({lpa:lpa,type:type,sort:sort,search:search,page:currentPage,limit:50});
+  var view=document.getElementById('viewFilter').value;
+  var params=new URLSearchParams({lpa:lpa,type:type,sort:sort,search:search,view:view,page:currentPage,limit:50});
   var data=await api('/api/leads?'+params);
   document.getElementById('resultCount').textContent=data.total+' leads';
   data.leads.forEach(function(l){leadsById[l.id]=l;});
@@ -293,6 +299,7 @@ function renderLeads(leads){
         (l.contacted?'<span style="font-size:11px;color:#27500A;padding:4px 10px">✓ Contacted</span>':'<button class="act-btn" style="color:#27500A;border-color:#27500A" onclick="event.stopPropagation();markContacted('+l.id+')">Mark contacted</button>')+
         '<button class="act-btn-letter" onclick="event.stopPropagation();generateLetter('+l.id+')">✉ Generate letter</button>'+
         '<a class="act-btn-map" href="'+mapsUrl+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 View on map</a>'+
+        (l.archived?'<button class="act-btn" onclick="event.stopPropagation();setArchived('+l.id+',0)">↩ Restore</button>':'<button class="act-btn" style="color:#888" onclick="event.stopPropagation();setArchived('+l.id+',1)">🗄 Archive</button>')+
       '</div>'+
     '</div>':'';
     return '<div class="lead-card'+(isOpen?' expanded':'')+'" onclick="toggleLead('+l.id+')">'+
@@ -304,6 +311,7 @@ function renderLeads(leads){
             '<span class="pill '+typeClass(l.app_type)+'">'+typeLabel(l.app_type)+'</span>'+
             (l.no_agent?'<span class="pill pill-noagent">No agent</span>':'')+
             (l.is_new_application?'<span class="pill pill-new">New app</span>':'')+
+            (l.archived?'<span class="pill pill-other">Archived</span>':'')+
           '</div>'+
         '</div>'+
         '<div style="text-align:right">'+
@@ -325,6 +333,10 @@ function changePage(p){currentPage=p;loadLeads();window.scrollTo(0,0);}
 async function markContacted(id){
   await api('/api/leads/'+id+'/contact',{method:'POST',body:JSON.stringify({})});
   loadLeads();
+}
+async function setArchived(id,flag){
+  await api('/api/leads/'+id+'/archive',{method:'POST',body:JSON.stringify({archived:flag})});
+  loadStats();loadLeads();
 }
 async function generateLetter(id){
   var lead=leadsById[id];
