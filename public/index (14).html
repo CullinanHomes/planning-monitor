@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planning Lead Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;background:#f5f5f3;color:#1a1a1a;}
+#login{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.login-card{background:#fff;border:1px solid #e0e0dc;border-radius:12px;padding:2.5rem;width:340px;}
+.login-card h1{font-size:20px;font-weight:600;margin-bottom:6px;}
+.login-card p{font-size:13px;color:#666;margin-bottom:1.5rem;}
+.login-card input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:10px;}
+.login-card button{width:100%;padding:10px;background:#1a1a1a;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;}
+.err{color:#c0392b;font-size:12px;margin-top:6px;}
+#app{display:none;}
+header{background:#fff;border-bottom:1px solid #e0e0dc;padding:0 1.5rem;display:flex;align-items:center;gap:1rem;height:56px;}
+header h1{font-size:16px;font-weight:600;flex:1;}
+.tab-bar{display:flex;background:#fff;border-bottom:1px solid #e0e0dc;padding:0 1.5rem;}
+.tab{padding:12px 16px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:#666;}
+.tab.active{color:#1a1a1a;border-bottom-color:#1a1a1a;font-weight:500;}
+.tab-content{display:none;padding:1.25rem 1.5rem;}
+.tab-content.active{display:block;}
+.btn{padding:8px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;}
+.btn:hover{background:#f5f5f3;}
+.btn-primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}
+.btn-primary:hover{background:#333;}
+.btn-primary:disabled{background:#888;cursor:not-allowed;}
+.btn-green{background:#27500A;color:#fff;border-color:#27500A;}
+.btn-green:hover{background:#3B6D11;}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem;}
+.stat{background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:14px 16px;}
+.stat-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+.stat-val{font-size:24px;font-weight:600;}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem;align-items:center;}
+.filters select,.filters input{padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;}
+.filters input{width:220px;}
+.spacer{flex:1;}
+.leads-list{display:flex;flex-direction:column;gap:10px;}
+.lead-card{background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:14px 16px;cursor:pointer;}
+.lead-card:hover{border-color:#bbb;}
+.lead-card.expanded{border-color:#1a1a1a;}
+.lead-top{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start;}
+.lead-address{font-size:14px;font-weight:600;margin-bottom:3px;}
+.lead-meta{font-size:11px;color:#888;}
+.lpa-badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700;margin-right:2px;text-transform:uppercase;letter-spacing:.03em;}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+.pill{font-size:11px;font-weight:500;padding:2px 8px;border-radius:100px;}
+.pill-ext{background:#FAEEDA;color:#633806;}
+.pill-self{background:#EAF3DE;color:#27500A;}
+.pill-conv{background:#EEEDFE;color:#3C3489;}
+.pill-loft{background:#E1F5EE;color:#085041;}
+.pill-other{background:#F1EFE8;color:#444441;}
+.pill-noagent{background:#FCEBEB;color:#791F1F;}
+.pill-new{background:#EAF3DE;color:#27500A;}
+.pill-contacted{background:#e6f1fb;color:#0C447C;}
+.pill-interested{background:#FAEEDA;color:#BA7517;}
+.pill-quoted{background:#EEEDFE;color:#3C3489;}
+.pill-won{background:#EAF3DE;color:#27500A;}
+.pill-lost{background:#FCEBEB;color:#A32D2D;}
+.fin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.fin{background:#f5f5f3;border-radius:8px;padding:8px 10px;}
+.fin-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+.fin-val{font-size:14px;font-weight:600;}
+.fin-val.green{color:#27500A;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.info-item{font-size:12px;}
+.info-label{color:#888;margin-bottom:1px;font-size:11px;}
+.plan-bar{height:5px;border-radius:3px;background:#e0e0dc;margin-top:3px;}
+.plan-fill{height:5px;border-radius:3px;}
+.signals{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+.sig{display:flex;align-items:center;gap:6px;font-size:12px;}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:#639922;}
+.lead-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px;}
+.act-btn{font-size:11px;padding:5px 11px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;}
+.act-btn:hover{background:#f5f5f3;}
+.act-btn-letter{font-size:11px;padding:5px 11px;border:1px solid #27500A;border-radius:6px;background:#fff;color:#27500A;cursor:pointer;}
+.act-btn-letter:hover{background:#EAF3DE;}
+.act-btn-map{font-size:11px;padding:5px 11px;border:1px solid #1a73e8;border-radius:6px;background:#fff;color:#1a73e8;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
+.act-btn-map:hover{background:#e8f0fe;}
+.empty{text-align:center;padding:2.5rem;color:#888;font-size:13px;}
+.pager{display:flex;align-items:center;justify-content:center;gap:8px;padding:1rem;font-size:13px;color:#666;}
+.step{background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+.step-hdr{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.step-num{width:22px;height:22px;border-radius:50%;background:#e6f1fb;color:#0C447C;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.step select,.step textarea{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;}
+.step textarea{resize:vertical;min-height:140px;}
+.classify-status{font-size:13px;padding:8px 0;color:#888;}
+.classify-status.running{color:#BA7517;}
+.classify-status.done{color:#27500A;}
+.classify-status.err{color:#A32D2D;}
+.result-card{background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+.rc-top{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px;}
+.rc-address{font-size:14px;font-weight:600;margin-bottom:3px;}
+.rc-ref{font-size:11px;color:#888;}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:600px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;margin:1rem;}
+.modal-header{padding:16px 20px;border-bottom:1px solid #e0e0dc;display:flex;align-items:center;justify-content:space-between;}
+.modal-header h2{font-size:15px;font-weight:600;margin-right:8px;}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1;padding:0 4px;}
+.modal-body{padding:20px;overflow-y:auto;flex:1;}
+.letter-loading{text-align:center;padding:2.5rem;color:#888;font-size:13px;}
+.letter-text{font-size:13px;line-height:1.75;white-space:pre-wrap;background:#f5f5f3;border-radius:8px;padding:16px;}
+.modal-footer{padding:14px 20px;border-top:1px solid #e0e0dc;display:flex;gap:8px;justify-content:flex-end;align-items:center;}
+.copy-confirm{font-size:12px;color:#27500A;flex:1;}
+.land-card{background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:14px 16px;}
+.land-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+.land-address{font-size:14px;font-weight:600;margin-bottom:3px;}
+.land-meta{font-size:11px;color:#888;}
+.next-action{font-size:11px;font-weight:700;padding:3px 10px;border-radius:100px;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
+.next-action.overdue{background:#FCEBEB;color:#A32D2D;}
+.next-action.upcoming{background:#FAEEDA;color:#BA7517;}
+.next-action.ok{background:#EAF3DE;color:#27500A;}
+.cadence-row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
+.cad-chip{font-size:11px;padding:4px 9px;border-radius:6px;background:#f5f5f3;color:#888;border:1px solid #e0e0dc;cursor:pointer;}
+.cad-chip.done{background:#EAF3DE;color:#27500A;border-color:#c9e0b3;cursor:default;}
+.land-status-select{font-size:11px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;background:#fff;}
+.land-notes{width:100%;font-size:12px;padding:7px 9px;border:1px solid #e0e0dc;border-radius:8px;font-family:inherit;resize:vertical;min-height:40px;margin-top:6px;background:#fbfbfa;}
+.scorecard-table{width:100%;border-collapse:collapse;font-size:12px;}
+.scorecard-table th{text-align:left;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid #e0e0dc;}
+.scorecard-table td{padding:8px;border-bottom:1px solid #f0f0ec;vertical-align:middle;}
+.scorecard-seg{font-weight:600;white-space:nowrap;}
+.scorecard-cell{min-width:110px;}
+.scorecard-bar-bg{background:#f0f0ec;border-radius:5px;height:16px;position:relative;overflow:hidden;}
+.scorecard-bar-fill{height:16px;border-radius:5px;background:#27500A;}
+.scorecard-bar-label{position:absolute;inset:0;display:flex;align-items:center;padding-left:6px;font-size:10px;font-weight:600;color:#1a1a1a;}
+.scorecard-empty{color:#bbb;font-size:11px;}
+@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr);}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <h1>Planning lead monitor</h1>
+    <p>Elmbridge · Richmond · Merton · Mole Valley · Runnymede · Hertsmere · Barnet</p>
+    <input type="password" id="pwd" placeholder="Password" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <h1>Planning lead monitor</h1>
+    <button class="btn btn-green" onclick="exportCSV()">Export CSV</button>
+  </header>
+  <div class="tab-bar">
+    <div class="tab active" onclick="switchTab('dashboard')">Dashboard</div>
+    <div class="tab" onclick="switchTab('contacted')">Contacted</div>
+    <div class="tab" onclick="switchTab('classify')">Paste and classify</div>
+    <div class="tab" onclick="switchTab('land')">Land</div>
+    <div class="tab" onclick="switchTab('settings')">Settings</div>
+  </div>
+
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="stats" id="stats"></div>
+    <div class="filters">
+      <input type="text" id="search" placeholder="Search address, applicant..." oninput="debounce()">
+      <select id="viewFilter" onchange="currentPage=1;loadLeads()">
+        <option value="active">Active leads</option>
+        <option value="archived">Archived</option>
+        <option value="all">All leads</option>
+      </select>
+      <select id="lpaFilter" onchange="loadLeads()">
+        <option value="all">All LPAs</option>
+      </select>
+      <select id="typeFilter" onchange="loadLeads()">
+        <option value="all">All types</option>
+        <option value="large_extension">Extension</option>
+        <option value="selfbuild">Self-build</option>
+        <option value="conversion">Conversion</option>
+        <option value="loft_complex">Loft</option>
+      </select>
+      <select id="sortFilter" onchange="loadLeads()">
+        <option value="score">Priority score</option>
+        <option value="value">Contract value</option>
+        <option value="planning">Planning likelihood</option>
+        <option value="date">Newest first</option>
+      </select>
+      <div class="spacer"></div>
+      <span id="resultCount" style="font-size:13px;color:#888;"></span>
+    </div>
+    <div class="leads-list" id="leadsList"></div>
+    <div class="pager" id="pager"></div>
+  </div>
+
+  <div id="tab-contacted" class="tab-content">
+    <div class="stats" id="statsContacted" style="grid-template-columns:repeat(3,1fr);"></div>
+    <div class="stats" id="statsFunnel" style="grid-template-columns:repeat(4,1fr);"></div>
+    <div class="filters">
+      <input type="text" id="searchContacted" placeholder="Search address, applicant..." oninput="debounceContacted()">
+      <select id="stageFilterContacted" onchange="contactedPage=1;loadContactedLeads()">
+        <option value="all">All stages</option>
+        <option value="contacted">Contacted</option>
+        <option value="interested">Interested</option>
+        <option value="quoted">Quoted</option>
+        <option value="won">Won</option>
+        <option value="lost">Lost</option>
+      </select>
+      <select id="lpaFilterContacted" onchange="contactedPage=1;loadContactedLeads()">
+        <option value="all">All LPAs</option>
+      </select>
+      <select id="sortFilterContacted" onchange="contactedPage=1;loadContactedLeads()">
+        <option value="contactedDate">Most recently contacted</option>
+        <option value="score">Priority score</option>
+        <option value="value">Contract value</option>
+      </select>
+      <div class="spacer"></div>
+      <span id="resultCountContacted" style="font-size:13px;color:#888;"></span>
+    </div>
+    <div class="leads-list" id="leadsListContacted"></div>
+    <div class="pager" id="pagerContacted"></div>
+  </div>
+
+  <div id="tab-classify" class="tab-content">
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">1</div>Select council and open its portal</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="classifyLpa" onchange="updatePortalLink()" style="width:auto;min-width:200px;"></select>
+        <a id="portalLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;display:inline-block;">Open portal ↗</a>
+      </div>
+      <p style="font-size:12px;color:#888;margin-top:8px;">Opens this council's planning search in a new tab. Find the weekly list, select all (Ctrl+A), copy (Ctrl+C), then come back here.</p>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">2</div>Paste text or upload a PDF</div>
+      <p style="font-size:12px;color:#888;margin-bottom:8px;">Either press Ctrl+A then Ctrl+C on the weekly list page and paste below, or upload the weekly list PDF directly — no need to do both.</p>
+      <textarea id="pasteText" placeholder="Paste planning application text here..." oninput="if(this.value.trim())clearPdfFile()"></textarea>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label class="btn" style="cursor:pointer;margin:0;">Upload PDF<input type="file" id="pdfFile" accept="application/pdf" style="display:none;" onchange="handlePdfSelect(event)"></label>
+        <span id="pdfFileName" style="font-size:12px;color:#888;"></span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">3</div>Classify and save leads</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="classifyBtn" onclick="classifyText()">Classify applications</button>
+        <button class="btn btn-green" id="saveAllBtn" onclick="saveAll()" style="display:none">Save all to dashboard</button>
+      </div>
+      <div class="classify-status" id="classifyStatus"></div>
+    </div>
+    <div id="classifyResults"></div>
+  </div>
+
+  <div id="tab-land" class="tab-content">
+    <div class="stats" id="landStats"></div>
+    <div class="step" id="scorecardWrap" style="display:none;">
+      <div class="step-hdr"><div class="step-num">%</div>Response rate by segment &amp; letter</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">For each segment, the share of that specific letter that got a reply before the next one went out (or before today, for the most recent letter).</p>
+      <div id="scorecard"></div>
+    </div>
+    <div class="step" id="timeBreakdownWrap" style="display:none;">
+      <div class="step-hdr"><div class="step-num">⏱</div>Response rate over time
+        <select id="timeBreakdownMode" onchange="renderTimeBreakdownFromCache()" style="margin-left:auto;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">
+          <option value="annual">Annual</option>
+          <option value="quarterly">Quarterly</option>
+        </select>
+      </div>
+      <div id="timeBreakdown"></div>
+    </div>
+    <div class="filters">
+      <input type="text" id="landSearch" placeholder="Search address, area, council, notes..." oninput="landDebounce()">
+      <select id="landStatusFilter" onchange="loadLand()">
+        <option value="all">All statuses</option>
+        <option value="active">Active</option>
+        <option value="interested">Interested</option>
+        <option value="dead">No longer pursuing</option>
+        <option value="converted">Converted</option>
+      </select>
+      <select id="landDueFilter" onchange="loadLand()">
+        <option value="all">Any follow-up status</option>
+        <option value="overdue">Overdue</option>
+        <option value="upcoming">Upcoming (not yet due)</option>
+      </select>
+      <select id="landAreaFilter" onchange="loadLand()"><option value="all">All areas</option></select>
+      <select id="landCouncilFilter" onchange="loadLand()"><option value="all">All councils</option></select>
+      <div class="spacer"></div>
+      <input type="file" id="landCsvInput" accept=".csv" style="display:none" onchange="handleLandCsvSelect(event)">
+      <button class="btn" onclick="document.getElementById('landCsvInput').click()">Import CSV</button>
+      <button class="btn" onclick="toggleRecentImports()">Recent imports</button>
+      <button class="btn" style="color:#A32D2D;border-color:#A32D2D;" onclick="resetLandData()">Reset all data</button>
+      <button class="btn" onclick="landExportCSV()">Export CSV</button>
+      <button class="btn btn-green" onclick="openAddLandModal()">+ Add site</button>
+    </div>
+    <div id="recentImportsPanel" style="display:none;background:#fff;border:1px solid #e0e0dc;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:12px;"></div>
+    <div id="landImportStatus" style="font-size:12px;margin-bottom:10px;"></div>
+    <div id="landBatchBar" style="display:none;background:#1a1a1a;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="landBatchCount" style="font-size:13px;font-weight:600;"></span>
+      <span style="font-size:12px;color:#ccc;">Log for all selected:</span>
+      <select id="landBatchLetterN" style="padding:5px 8px;border-radius:6px;border:none;font-size:12px;">
+        <option value="1">Letter 1</option><option value="2">Letter 2</option><option value="3">Letter 3</option><option value="4">Letter 4</option>
+      </select>
+      <input type="date" id="landBatchDate" style="padding:5px 8px;border-radius:6px;border:none;font-size:12px;">
+      <button class="btn btn-green" onclick="applyBatchLetter()" style="padding:5px 10px;">Mark letter sent</button>
+      <select id="landBatchKnockN" style="padding:5px 8px;border-radius:6px;border:none;font-size:12px;">
+        <option value="1">Door knock 1</option><option value="2">Door knock 2</option>
+      </select>
+      <button class="btn" style="padding:5px 10px;" onclick="applyBatchKnock()">Mark knocked</button>
+      <button class="btn" style="padding:5px 10px;" onclick="applyBatchDelete()">Delete selected</button>
+      <button class="btn" style="padding:5px 10px;margin-left:auto;" onclick="clearLandSelection()">Clear selection</button>
+    </div>
+    <div style="margin-bottom:8px;">
+      <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="landSelectAll" onchange="toggleSelectAllLand(this.checked)"> Select all visible</label>
+    </div>
+    <div class="leads-list" id="landList"></div>
+  </div>
+
+  <div id="tab-settings" class="tab-content">
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">£</div>Build rates — drives cost &amp; profit on every lead</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:520px;">
+        <div>
+          <div style="font-size:12px;color:#888;margin-bottom:4px;">Build cost £/ft² (your core cost)</div>
+          <input type="number" id="setCostPsf" oninput="updateMarginPreview()" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+        </div>
+        <div>
+          <div style="font-size:12px;color:#888;margin-bottom:4px;">Charge-out £/ft² (what you charge)</div>
+          <input type="number" id="setChargePsf" oninput="updateMarginPreview()" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+        </div>
+      </div>
+      <div id="marginPreview" style="font-size:13px;color:#27500A;margin-top:10px;font-weight:500;"></div>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">≥</div>Minimum profit</div>
+      <p style="font-size:12px;color:#888;margin-bottom:8px;">Applications are qualified by estimated profit (floor area × your margin per ft², set above), not by build cost. Anything below this profit threshold is ignored when you classify a weekly list.</p>
+      <div style="display:flex;align-items:center;gap:6px;max-width:250px;">
+        <span style="font-size:14px;color:#555;">£</span>
+        <input type="number" id="setMinValue" step="5000" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">✉</div>Letter templates</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">Write once, reuse forever. Each template is addressed to either the <b>homeowner</b> or the <b>architect/agent</b> who submitted the application, and can be tied to a project type so the right one is pre-selected. Placeholders filled automatically from each lead: <b>{name}</b> (applicant), <b>{agent}</b> (architect/agent), <b>{address}</b> (site), <b>{project}</b> (description of works), <b>{ref}</b> (application number).</p>
+      <div id="templateRows"></div>
+      <button class="btn" onclick="addTemplateRow()" style="margin-top:8px;">+ Add template</button>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">⚑</div>Councils and portal links</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">These feed every dropdown in the app. Paste in the exact weekly-list page you use for each council so "Open portal" lands you in the right place.</p>
+      <div id="lpaRows"></div>
+      <button class="btn" onclick="addLpaRow()" style="margin-top:8px;">+ Add council</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn btn-green" onclick="saveSettings()">Save settings</button>
+      <span id="settingsStatus" style="font-size:13px;color:#27500A;"></span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="landModal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add land site</h2>
+      <button class="modal-close" onclick="closeLandModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-size:12px;color:#888;margin-bottom:4px;">Address</div>
+          <input type="text" id="landNewAddress" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;" placeholder="55 Lodge Close, Surrey, Cobham KT11 2SQ">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:4px;">Type</div>
+            <input type="text" id="landNewType" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;" placeholder="Residential Garden / Home">
+          </div>
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:4px;">Area</div>
+            <input type="text" id="landNewArea" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;" placeholder="Cobham">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#888;margin-bottom:4px;">Council</div>
+          <input type="text" id="landNewCouncil" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;" placeholder="Elmbridge">
+        </div>
+        <div>
+          <div style="font-size:12px;color:#888;margin-bottom:4px;">Notes</div>
+          <textarea id="landNewNotes" style="width:100%;min-height:70px;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeLandModal()">Cancel</button>
+      <button class="btn btn-green" onclick="saveNewLandSite()">Add site</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="importPreviewModal" onclick="handleOverlayClick(event)">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-header">
+      <h2>Review before importing</h2>
+      <button class="modal-close" onclick="closeImportPreview()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="importPreviewSummary" style="margin-bottom:14px;font-size:13px;"></div>
+      <div id="importPreviewWarnings" style="margin-bottom:10px;"></div>
+      <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">First few rows that will be added</div>
+      <div id="importPreviewSample" style="border:1px solid #e0e0dc;border-radius:8px;overflow:hidden;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeImportPreview()">Cancel — don't import</button>
+      <button class="btn btn-green" id="importConfirmBtn" onclick="confirmLandImport()">Import these sites</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="letterModal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="letterModalTitle">Outreach letter</h2>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="letterModalBody">
+      <div class="letter-loading">Generating letter — takes about 10 seconds...</div>
+    </div>
+    <div style="padding:0 20px 4px;border-top:1px solid #f0f0ec;">
+      <div style="display:flex;align-items:center;gap:8px;padding-top:10px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#888;">Send to:</span>
+        <select id="letterRecipient" onchange="populateTemplateChoices()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">
+          <option value="homeowner">Homeowner</option>
+          <option value="agent">Architect / agent</option>
+        </select>
+        <span style="font-size:12px;color:#888;">Template:</span>
+        <select id="letterTemplate" onchange="applyLetterTemplate()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;flex:1;min-width:160px;"></select>
+      </div>
+      <div id="recipientWarn" style="font-size:11px;color:#BA7517;padding-top:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="copy-confirm" id="copyConfirm"></span>
+      <button class="btn" id="copyBtn" onclick="copyLetter()" style="display:none">Copy text</button>
+      <button class="btn btn-green" id="gdocsBtn" onclick="openInGoogleDocs()" style="display:none">Open in Google Docs</button>
+      <button class="btn" id="wordBtn" onclick="downloadWord()" style="display:none">Word file</button>
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="markContactedModal" onclick="if(event.target===this)closeMarkContactedModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h2 id="markContactedTitle">Mark contacted</h2>
+      <button class="modal-close" onclick="closeMarkContactedModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div><div style="font-size:12px;color:#888;margin-bottom:3px;">Date contacted</div><input type="date" id="mcDate" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;"></div>
+        <div><div style="font-size:12px;color:#888;margin-bottom:3px;">Note (optional)</div><textarea id="mcNotes" placeholder="e.g. Left voicemail, emailed brochure..." style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;min-height:60px;resize:vertical;"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeMarkContactedModal()">Cancel</button>
+      <button class="btn btn-green" onclick="confirmMarkContacted()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="contactModal" onclick="if(event.target===this)closeContactModal()">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <h2 id="contactModalTitle">Contact details</h2>
+      <button class="modal-close" onclick="closeContactModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div><div style="font-size:12px;color:#888;margin-bottom:3px;">Applicant name</div><input type="text" id="cName" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;"></div>
+        <div><div style="font-size:12px;color:#888;margin-bottom:3px;">Applicant address (if different from the site)</div><textarea id="cAddress" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;min-height:60px;resize:vertical;"></textarea></div>
+      </div>
+      <p style="font-size:11px;color:#888;margin-top:10px;">Tip: if it was not in the weekly list, the application form PDF on the council portal shows the applicant name and correspondence address — use the Find application button.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeContactModal()">Cancel</button>
+      <button class="btn btn-green" onclick="saveContactDetails()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var SESSION=localStorage.getItem('session')||'';
+var expandedId=null;
+var classifiedLeads=[];
+var debounceTimer;
+var currentPage=1;
+var currentLetterText='';
+var currentLetterAddress='';
+var leadsById={};
+var SETTINGS={lpas:[],costPsf:0,chargePsf:0};
+var contactedPage=1;
+var contactedDebounceTimer;
+var markContactedLeadId=null;
+
+// --- UK date formatting ---
+// Accepts an ISO date (YYYY-MM-DD, what the app now stores/requests) and returns DD/MM/YYYY.
+// Anything it doesn't recognise (free-text dates the AI occasionally returns) is shown as-is.
+function fmtDateUK(str){
+  if(!str)return '—';
+  var iso=/^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if(iso)return iso[3]+'/'+iso[2]+'/'+iso[1];
+  return str;
+}
+function parseDateFlexible(str){
+  if(!str)return null;
+  var iso=/^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if(iso)return new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]));
+  var uk=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(str.trim());
+  if(uk)return new Date(Number(uk[3]),Number(uk[2])-1,Number(uk[1]));
+  return null;
+}
+// Rough statutory determination targets for English planning applications.
+// Householder work (extensions, lofts, conversions) = 8 weeks; larger new-build schemes = 13 weeks.
+// This is an estimate for prioritising follow-ups, not an official date — always check the portal.
+var DETERMINATION_WEEKS={large_extension:8,loft_complex:8,conversion:8,selfbuild:13,other:8};
+function decisionDueInfo(l){
+  var submitted=parseDateFlexible(l.date_submitted);
+  if(!submitted)return null;
+  var weeks=DETERMINATION_WEEKS[l.app_type]||8;
+  var due=new Date(submitted.getTime()+weeks*7*24*60*60*1000);
+  var daysLeft=Math.round((due-new Date())/(24*60*60*1000));
+  return {due:due,weeks:weeks,daysLeft:daysLeft};
+}
+function fmtDateUKObj(d){
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
+function stageLabel(s){return {contacted:'Contacted',interested:'Interested',quoted:'Quoted',won:'Won',lost:'Lost'}[s]||s;}
+function stageClass(s){return {contacted:'pill-contacted',interested:'pill-interested',quoted:'pill-quoted',won:'pill-won',lost:'pill-lost'}[s]||'pill-other';}
+// Deterministic colour per council name, so each LPA always gets the same badge colour
+// (no manual assignment needed, and it keeps working as councils are added/removed in Settings).
+var LPA_PALETTE=[
+  {bg:'#E1F0FF',fg:'#0B4C8C'},{bg:'#E3F5E1',fg:'#1F6B2E'},{bg:'#F5E6FF',fg:'#6B238C'},
+  {bg:'#FFF0DC',fg:'#8C5A0B'},{bg:'#FFE1EC',fg:'#9C1F52'},{bg:'#E1FBF5',fg:'#0B8C6E'},
+  {bg:'#F0E6D8',fg:'#6B4A1F'},{bg:'#E8E8F5',fg:'#3B3B8C'}
+];
+function lpaColor(name){
+  var idx=(SETTINGS.lpas||[]).findIndex(function(l){return l.name===name;});
+  if(idx===-1){
+    var hash=0;var str=String(name||'');
+    for(var i=0;i<str.length;i++){hash=(hash*31+str.charCodeAt(i))>>>0;}
+    idx=hash;
+  }
+  return LPA_PALETTE[idx%LPA_PALETTE.length];
+}
+async function setStage(id,stage){
+  var lostReason='';
+  if(stage==='lost'){
+    lostReason=prompt('Optional: why was this lead lost? (e.g. price, timing, chose someone else)','')||'';
+  }
+  await api('/api/leads/'+id+'/stage',{method:'POST',body:JSON.stringify({stage:stage,lost_reason:lostReason})});
+  refreshAllLists();
+}
+
+function api(path,opts){
+  opts=opts||{};
+  return fetch(path,{headers:Object.assign({'x-session':SESSION,'Content-Type':'application/json'},opts.headers||{}),method:opts.method||'GET',body:opts.body})
+  .then(function(r){if(r.status===401){logout();}return r.json();});
+}
+async function loadSettings(){
+  SETTINGS=await api('/api/settings');
+  var lpaFilter=document.getElementById('lpaFilter');
+  var keep=lpaFilter.value||'all';
+  lpaFilter.innerHTML='<option value="all">All LPAs</option>'+SETTINGS.lpas.map(function(l){return '<option value="'+esc(l.name)+'" style="color:'+lpaColor(l.name).fg+'">'+esc(l.name)+'</option>';}).join('');
+  lpaFilter.value=keep;
+  var lpaFilterC=document.getElementById('lpaFilterContacted');
+  var keepC2=lpaFilterC.value||'all';
+  lpaFilterC.innerHTML='<option value="all">All LPAs</option>'+SETTINGS.lpas.map(function(l){return '<option value="'+esc(l.name)+'" style="color:'+lpaColor(l.name).fg+'">'+esc(l.name)+'</option>';}).join('');
+  lpaFilterC.value=keepC2;
+  var classifyLpa=document.getElementById('classifyLpa');
+  var keepC=classifyLpa.value;
+  classifyLpa.innerHTML=SETTINGS.lpas.map(function(l){return '<option value="'+esc(l.name)+'">'+esc(l.name)+'</option>';}).join('');
+  if(keepC)classifyLpa.value=keepC;
+  updatePortalLink();
+  document.getElementById('setCostPsf').value=SETTINGS.costPsf||'';
+  document.getElementById('setChargePsf').value=SETTINGS.chargePsf||'';
+  document.getElementById('setMinValue').value=SETTINGS.minProfit||85000;
+  if(!SETTINGS.templates)SETTINGS.templates=[];
+  renderLpaRows();
+  renderTemplateRows();
+  updateMarginPreview();
+}
+function typeOptions(sel){
+  var types=[['','Any type'],['large_extension','Extension'],['selfbuild','New build / self-build'],['conversion','Conversion'],['loft_complex','Loft'],['other','Other']];
+  return types.map(function(t){return '<option value="'+t[0]+'"'+(sel===t[0]?' selected':'')+'>'+t[1]+'</option>';}).join('');
+}
+function recipientOptions(sel){
+  var recs=[['homeowner','To: Homeowner'],['agent','To: Architect / agent']];
+  return recs.map(function(r){return '<option value="'+r[0]+'"'+(sel===r[0]?' selected':'')+'>'+r[1]+'</option>';}).join('');
+}
+function renderTemplateRows(){
+  document.getElementById('templateRows').innerHTML=(SETTINGS.templates||[]).map(function(t,i){
+    return '<div style="border:1px solid #e0e0dc;border-radius:10px;padding:12px;margin-bottom:10px;">'+
+      '<div style="display:grid;grid-template-columns:1fr 170px 160px auto;gap:8px;margin-bottom:8px;align-items:center;">'+
+        '<input type="text" value="'+esc(t.name)+'" placeholder="Template name" onchange="SETTINGS.templates['+i+'].name=this.value" style="padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">'+
+        '<select onchange="SETTINGS.templates['+i+'].recipient=this.value" style="padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">'+recipientOptions(t.recipient||'homeowner')+'</select>'+
+        '<select onchange="SETTINGS.templates['+i+'].type=this.value" style="padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">'+typeOptions(t.type||'')+'</select>'+
+        '<button class="act-btn" style="color:#A32D2D" onclick="SETTINGS.templates.splice('+i+',1);renderTemplateRows()">✕</button>'+
+      '</div>'+
+      '<textarea onchange="SETTINGS.templates['+i+'].body=this.value" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:12px;font-family:inherit;min-height:130px;resize:vertical;">'+esc(t.body||'')+'</textarea>'+
+    '</div>';
+  }).join('');
+}
+function addTemplateRow(){SETTINGS.templates.push({name:'',type:'',recipient:'homeowner',body:'Dear {name},\n\n\n\nKind regards,\n\nOliver Robinson\nCullinan Homes'});renderTemplateRows();}
+function updatePortalLink(){
+  var name=document.getElementById('classifyLpa').value;
+  var lpa=SETTINGS.lpas.find(function(l){return l.name===name;});
+  var link=document.getElementById('portalLink');
+  if(lpa&&lpa.url){link.href=lpa.url;link.style.display='inline-block';}
+  else{link.style.display='none';}
+}
+function renderLpaRows(){
+  document.getElementById('lpaRows').innerHTML=SETTINGS.lpas.map(function(l,i){
+    return '<div style="display:grid;grid-template-columns:180px 1fr auto;gap:8px;margin-bottom:6px;align-items:center;">'+
+      '<input type="text" value="'+esc(l.name)+'" onchange="SETTINGS.lpas['+i+'].name=this.value" style="padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">'+
+      '<input type="text" value="'+esc(l.url)+'" placeholder="https://... portal link" onchange="SETTINGS.lpas['+i+'].url=this.value" style="padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">'+
+      '<button class="act-btn" style="color:#A32D2D" onclick="SETTINGS.lpas.splice('+i+',1);renderLpaRows()">✕</button>'+
+    '</div>';
+  }).join('');
+}
+function addLpaRow(){SETTINGS.lpas.push({name:'',url:''});renderLpaRows();}
+function updateMarginPreview(){
+  var c=Number(document.getElementById('setCostPsf').value)||0;
+  var ch=Number(document.getElementById('setChargePsf').value)||0;
+  var el=document.getElementById('marginPreview');
+  if(c&&ch){var m=((ch-c)/ch*100).toFixed(1);el.textContent='Gross margin: £'+(ch-c)+'/ft² ('+m+'% of charge-out)';}
+  else{el.textContent='';}
+}
+async function saveSettings(){
+  SETTINGS.costPsf=Number(document.getElementById('setCostPsf').value)||0;
+  SETTINGS.chargePsf=Number(document.getElementById('setChargePsf').value)||0;
+  SETTINGS.minProfit=Number(document.getElementById('setMinValue').value)||85000;
+  SETTINGS.lpas=SETTINGS.lpas.filter(function(l){return l.name;});
+  SETTINGS.templates=(SETTINGS.templates||[]).filter(function(t){return t.name&&t.body;});
+  await api('/api/settings',{method:'POST',body:JSON.stringify(SETTINGS)});
+  document.getElementById('settingsStatus').textContent='✓ Saved';
+  setTimeout(function(){document.getElementById('settingsStatus').textContent='';},2500);
+  loadSettings();loadLeads();
+}
+async function login(){
+  var pwd=document.getElementById('pwd').value;
+  var res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+  var data=await res.json();
+  if(data.token){SESSION=data.token;localStorage.setItem('session',SESSION);document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';loadSettings().then(function(){loadStats();loadLeads();});}
+  else{document.getElementById('loginErr').textContent='Incorrect password';}
+}
+function logout(){localStorage.removeItem('session');location.reload();}
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(function(t,i){t.classList.toggle('active',['dashboard','contacted','classify','land','settings'][i]===name);});
+  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='contacted')loadContactedLeads();
+  if(name==='land'){loadLandStats();loadLand();}
+}
+function fmt(n){
+  if(!n)return '—';
+  if(n>=1000000)return '£'+(n/1000000).toFixed(1).replace(/\.0$/,'')+'m';
+  return '£'+Math.round(n/1000)+'k';
+}
+function fmtPipeline(n){
+  if(!n)return '£0';
+  if(n>=1000000)return '£'+(n/1000000).toFixed(1).replace(/\.0$/,'')+'m';
+  return '£'+Math.round(n/1000)+'k';
+}
+async function loadStats(){
+  var s=await api('/api/stats');
+  document.getElementById('stats').innerHTML=
+    '<div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">'+s.total+'</div></div>'+
+    '<div class="stat"><div class="stat-label">This week</div><div class="stat-val" style="color:#27500A">'+s.thisWeek+'</div></div>'+
+    '<div class="stat"><div class="stat-label">No agent</div><div class="stat-val">'+s.noAgent+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Pipeline</div><div class="stat-val">'+fmtPipeline(s.pipeline)+'</div><div style="font-size:11px;color:#888;margin-top:2px">'+(s.archived||0)+' archived</div></div>';
+  var sc=document.getElementById('statsContacted');
+  if(sc)sc.innerHTML=
+    '<div class="stat"><div class="stat-label">Contacted</div><div class="stat-val">'+(s.contacted||0)+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Contact rate</div><div class="stat-val" style="color:#27500A">'+(s.contactRate||0)+'%</div></div>'+
+    '<div class="stat"><div class="stat-label">Avg. days to contact</div><div class="stat-val">'+(s.avgDaysToContact!=null?s.avgDaysToContact:'—')+'</div></div>';
+  var sf=document.getElementById('statsFunnel');
+  var sctg=s.stageCounts||{};
+  if(sf)sf.innerHTML=
+    '<div class="stat"><div class="stat-label">Interested</div><div class="stat-val" style="color:#BA7517">'+(sctg.interested||0)+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Quoted</div><div class="stat-val" style="color:#3C3489">'+(sctg.quoted||0)+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Won</div><div class="stat-val" style="color:#27500A">'+(sctg.won||0)+'</div>'+(s.winRate!=null?'<div style="font-size:11px;color:#888;margin-top:2px">'+s.winRate+'% win rate</div>':'')+'</div>'+
+    '<div class="stat"><div class="stat-label">Lost</div><div class="stat-val" style="color:#A32D2D">'+(sctg.lost||0)+'</div></div>';
+}
+function typeLabel(t){return{large_extension:'Extension',selfbuild:'Self-build',conversion:'Conversion',loft_complex:'Loft',other:'Other'}[t]||t;}
+function typeClass(t){return{large_extension:'pill-ext',selfbuild:'pill-self',conversion:'pill-conv',loft_complex:'pill-loft',other:'pill-other'}[t]||'pill-other';}
+function scoreColor(s){return s>=75?'#27500A':s>=50?'#BA7517':'#888';}
+function planColor(p){return p>=70?'#27500A':p>=45?'#BA7517':'#E24B4A';}
+function googleMapsUrl(address){
+  return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((address||'')+', UK');
+}
+async function loadLeads(){
+  var lpa=document.getElementById('lpaFilter').value;
+  var type=document.getElementById('typeFilter').value;
+  var sort=document.getElementById('sortFilter').value;
+  var search=document.getElementById('search').value;
+  var view=document.getElementById('viewFilter').value;
+  var params=new URLSearchParams({lpa:lpa,type:type,sort:sort,search:search,view:view,page:currentPage,limit:50});
+  var data=await api('/api/leads?'+params);
+  document.getElementById('resultCount').textContent=data.total+' leads';
+  data.leads.forEach(function(l){leadsById[l.id]=l;});
+  renderLeads(data.leads,'leadsList');
+  renderPager(data.total,'pager','dash');
+}
+function debounceContacted(){clearTimeout(contactedDebounceTimer);contactedDebounceTimer=setTimeout(function(){contactedPage=1;loadContactedLeads();},400);}
+async function loadContactedLeads(){
+  var lpa=document.getElementById('lpaFilterContacted').value;
+  var sort=document.getElementById('sortFilterContacted').value;
+  var search=document.getElementById('searchContacted').value;
+  var stage=document.getElementById('stageFilterContacted').value;
+  var params=new URLSearchParams({lpa:lpa,type:'all',sort:sort,search:search,view:'contacted',stage:stage,page:contactedPage,limit:50});
+  var data=await api('/api/leads?'+params);
+  document.getElementById('resultCountContacted').textContent=data.total+' contacted leads';
+  data.leads.forEach(function(l){leadsById[l.id]=l;});
+  renderLeads(data.leads,'leadsListContacted');
+  renderPager(data.total,'pagerContacted','contacted');
+}
+function esc(str){
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function renderLeads(leads,targetId){
+  targetId=targetId||'leadsList';
+  var isContactedList=targetId==='leadsListContacted';
+  if(!leads.length){document.getElementById(targetId).innerHTML='<div class="empty">'+(isContactedList?'No contacted leads yet — leads you mark contacted from the dashboard will appear here':'No leads yet — go to Paste and Classify to add some')+'</div>';return;}
+  document.getElementById(targetId).innerHTML=leads.map(function(l){
+    var isOpen=expandedId===l.id;
+    var sc=scoreColor(l.priority_score||0);
+    var pc=l.planning_likelihood||0;
+    var pcCol=planColor(pc);
+    var mapsUrl=googleMapsUrl(l.address);
+    var area=l.floor_area_sqft||0;
+    var cost=area*(SETTINGS.costPsf||0);
+    var charge=area*(SETTINGS.chargePsf||0);
+    var profit=charge-cost;
+    var marginPct=charge>0?Math.round(profit/charge*100):0;
+    var profitRow=area>0&&SETTINGS.costPsf&&SETTINGS.chargePsf?
+      '<div class="fin-grid">'+
+        '<div class="fin"><div class="fin-label">Est. area <span style="cursor:pointer;color:#1a73e8" onclick="event.stopPropagation();editArea('+l.id+','+area+')">✎</span></div><div class="fin-val">'+area.toLocaleString()+' ft²</div></div>'+
+        '<div class="fin"><div class="fin-label">Build cost @ £'+SETTINGS.costPsf+'/ft²</div><div class="fin-val">'+fmt(cost)+'</div></div>'+
+        '<div class="fin"><div class="fin-label">Profit @ £'+SETTINGS.chargePsf+'/ft² charge</div><div class="fin-val green">'+fmt(profit)+' ('+marginPct+'%)</div></div>'+
+      '</div>':
+      '<div style="font-size:12px;color:#888;margin-bottom:12px;">No area estimate — <span style="cursor:pointer;color:#1a73e8" onclick="event.stopPropagation();editArea('+l.id+',0)">enter ft² manually</span>'+(!SETTINGS.costPsf||!SETTINGS.chargePsf?' and set your £/ft² rates in Settings':'')+'</div>';
+    var detail=isOpen?'<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0ec">'+
+      '<div class="fin-grid">'+
+        '<div class="fin"><div class="fin-label">Contract value</div><div class="fin-val green">'+fmt(l.contract_value_min)+' - '+fmt(l.contract_value_max)+'</div></div>'+
+        '<div class="fin"><div class="fin-label">Planning likelihood</div><div class="fin-val" style="color:'+pcCol+'">'+pc+'%</div><div class="plan-bar"><div class="plan-fill" style="width:'+pc+'%;background:'+pcCol+'"></div></div></div>'+
+        '<div class="fin"><div class="fin-label">Type</div><div class="fin-val">'+typeLabel(l.app_type)+'</div></div>'+
+      '</div>'+
+      profitRow+
+      '<div class="info-grid">'+
+        '<div class="info-item"><div class="info-label">Applicant</div>'+esc(l.applicant||'Not listed')+'</div>'+
+        '<div class="info-item"><div class="info-label">Agent</div>'+esc(l.agent||'None listed')+(l.agent_address?'<div style="color:#888;font-size:11px">'+esc(l.agent_address)+'</div>':'')+'</div>'+
+        '<div class="info-item"><div class="info-label">Postcode</div>'+esc(l.postcode||'—')+'</div>'+
+        '<div class="info-item"><div class="info-label">Submitted</div>'+esc(fmtDateUK(l.date_submitted))+'</div>'+
+      '</div>'+
+      (function(){
+        var d=decisionDueInfo(l);
+        if(!d)return '';
+        var col=d.daysLeft<0?'#A32D2D':d.daysLeft<=14?'#BA7517':'#27500A';
+        var txt=d.daysLeft<0?'Overdue by '+Math.abs(d.daysLeft)+' days':d.daysLeft+' days left';
+        return '<div style="font-size:12px;margin-bottom:12px;color:'+col+'">⏱ Decision due ~'+fmtDateUKObj(d.due)+' ('+d.weeks+'-week target, '+txt+') — estimate only, check the portal</div>';
+      })()+
+      '<div class="info-item" style="margin-bottom:12px;font-size:12px"><div class="info-label">Description</div>'+esc((l.description||'—').slice(0,250))+'</div>'+
+      '<div class="info-item" style="margin-bottom:12px;font-size:12px"><div class="info-label">Planning note</div>'+esc(l.planning_notes||'—')+'</div>'+
+      '<div style="background:#f5f5f3;border-radius:8px;padding:10px 12px;margin-bottom:12px;">'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Contact details</span>'+
+        '<button class="act-btn" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();openContactModal('+l.id+')">✎ Edit</button>'+
+        '<a class="act-btn" style="font-size:10px;padding:3px 8px;text-decoration:none;display:inline-block" href="'+findAppUrl(l)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔎 Find application</a></div>'+
+        ((l.contact_name||l.contact_address)?
+          '<div style="font-size:12px;line-height:1.6">'+
+          (l.contact_name?'<div><b>'+esc(l.contact_name)+'</b></div>':'')+
+          '<div>📮 '+esc(l.contact_address||('At the site: '+(l.address||'')))+'</div>'+
+          '</div>':
+          '<div style="font-size:12px;color:#888;">Letters go to '+(l.applicant?'<b>'+esc(l.applicant)+'</b>':'the applicant')+' at the site address — click Edit to record a different name or address</div>')+
+      '</div>'+
+      '<div class="signals">'+(l.signals||[]).map(function(s){return '<div class="sig"><div class="dot"></div><span>'+esc(s)+'</span></div>';}).join('')+'</div>'+
+      '<div class="lead-actions">'+
+        ((l.stage&&l.stage!=='new')?
+          '<span class="pill '+stageClass(l.stage)+'" style="padding:5px 11px;">'+stageLabel(l.stage)+(l.stage_date?' · '+fmtDateUK(l.stage_date):'')+'</span>'+
+          '<select onclick="event.stopPropagation()" onchange="event.stopPropagation();setStage('+l.id+',this.value)" style="font-size:11px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;background:#fff;">'+
+            ['contacted','interested','quoted','won','lost'].map(function(s){return '<option value="'+s+'"'+(s===l.stage?' selected':'')+'>Move to: '+stageLabel(s)+'</option>';}).join('')+
+          '</select>'+
+          (l.stage==='lost'&&l.lost_reason?'<span style="font-size:11px;color:#888;">— '+esc(l.lost_reason)+'</span>':'')+
+          '<button class="act-btn" onclick="event.stopPropagation();unmarkContacted('+l.id+')">↩ Undo</button>':
+          '<button class="act-btn" style="color:#27500A;border-color:#27500A" onclick="event.stopPropagation();openMarkContactedModal('+l.id+')">Mark contacted</button>')+
+        '<button class="act-btn-letter" onclick="event.stopPropagation();generateLetter('+l.id+')">✉ Generate letter</button>'+
+        '<a class="act-btn-map" href="'+mapsUrl+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 View on map</a>'+
+        (l.archived?'<button class="act-btn" onclick="event.stopPropagation();setArchived('+l.id+',0)">↩ Restore</button>':'<button class="act-btn" style="color:#888" onclick="event.stopPropagation();setArchived('+l.id+',1)">🗄 Archive</button>')+
+      '</div>'+
+    '</div>':'';
+    return '<div class="lead-card'+(isOpen?' expanded':'')+'" onclick="toggleLead('+l.id+')">'+
+      '<div class="lead-top">'+
+        '<div>'+
+          '<div class="lead-address">'+esc(l.address||'Unknown')+'</div>'+
+          '<div class="lead-meta"><span class="lpa-badge" style="background:'+lpaColor(l.lpa).bg+';color:'+lpaColor(l.lpa).fg+'">'+esc(l.lpa||'Unknown')+'</span>'+(l.ref?' '+esc(l.ref):'')+' · Added '+fmtDateUK(l.date_scraped)+'</div>'+
+          '<div class="tags">'+
+            '<span class="pill '+typeClass(l.app_type)+'">'+typeLabel(l.app_type)+'</span>'+
+            (l.no_agent?'<span class="pill pill-noagent">No agent</span>':'')+
+            (l.is_new_application?'<span class="pill pill-new">New app</span>':'')+
+            ((l.stage&&l.stage!=='new')?'<span class="pill '+stageClass(l.stage)+'">'+stageLabel(l.stage)+'</span>':'')+
+            (l.archived?'<span class="pill pill-other">Archived</span>':'')+
+          '</div>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="font-size:15px;font-weight:600;color:'+sc+'">'+(l.priority_score||0)+'</div>'+
+          '<div style="font-size:11px;color:#888">score</div>'+
+          '<div style="font-size:12px;font-weight:600;color:#27500A;margin-top:4px">'+(area>0&&SETTINGS.chargePsf?fmt(charge):fmt(l.contract_value_max))+'</div>'+
+          (area>0&&SETTINGS.costPsf&&SETTINGS.chargePsf?'<div style="font-size:11px;color:#27500A">'+fmt(profit)+' profit</div>':'')+
+        '</div>'+
+      '</div>'+detail+
+    '</div>';
+  }).join('');
+}
+function toggleLead(id){
+  expandedId=expandedId===id?null:id;
+  if(document.getElementById('tab-contacted').classList.contains('active'))loadContactedLeads();
+  else loadLeads();
+}
+function debounce(){clearTimeout(debounceTimer);debounceTimer=setTimeout(function(){currentPage=1;loadLeads();},400);}
+function renderPager(total,targetId,scope){
+  targetId=targetId||'pager';scope=scope||'dash';
+  var page=scope==='contacted'?contactedPage:currentPage;
+  var pages=Math.ceil(total/50);
+  document.getElementById(targetId).innerHTML=pages<=1?'':'<button class="btn" onclick="changePage('+(page-1)+',\''+scope+'\')" '+(page===1?'disabled':'')+'>Previous</button><span>Page '+page+' of '+pages+'</span><button class="btn" onclick="changePage('+(page+1)+',\''+scope+'\')" '+(page===pages?'disabled':'')+'>Next</button>';
+}
+function changePage(p,scope){
+  if(scope==='contacted'){contactedPage=p;loadContactedLeads();}else{currentPage=p;loadLeads();}
+  window.scrollTo(0,0);
+}
+function todayISO(){return new Date().toISOString().split('T')[0];}
+function openMarkContactedModal(id){
+  markContactedLeadId=id;
+  var l=leadsById[id];
+  document.getElementById('markContactedTitle').textContent='Mark contacted — '+((l&&l.address)||'');
+  document.getElementById('mcDate').value=todayISO();
+  document.getElementById('mcNotes').value=(l&&l.notes)||'';
+  document.getElementById('markContactedModal').classList.add('open');
+}
+function closeMarkContactedModal(){document.getElementById('markContactedModal').classList.remove('open');markContactedLeadId=null;}
+async function confirmMarkContacted(){
+  if(!markContactedLeadId)return;
+  var date=document.getElementById('mcDate').value||todayISO();
+  var notes=document.getElementById('mcNotes').value.trim();
+  await api('/api/leads/'+markContactedLeadId+'/contact',{method:'POST',body:JSON.stringify({contacted_date:date,notes:notes})});
+  closeMarkContactedModal();
+  refreshAllLists();
+}
+async function unmarkContacted(id){
+  await api('/api/leads/'+id+'/contact',{method:'POST',body:JSON.stringify({contacted:false})});
+  refreshAllLists();
+}
+function refreshAllLists(){
+  loadStats();
+  loadLeads();
+  if(document.getElementById('tab-contacted').classList.contains('active'))loadContactedLeads();
+}
+async function setArchived(id,flag){
+  await api('/api/leads/'+id+'/archive',{method:'POST',body:JSON.stringify({archived:flag})});
+  refreshAllLists();
+}
+async function editArea(id,current){
+  var val=prompt('Estimated new/altered floor area in ft² for this project:',current||'');
+  if(val===null)return;
+  var area=Number(val)||0;
+  await api('/api/leads/'+id+'/area',{method:'POST',body:JSON.stringify({floor_area_sqft:area})});
+  refreshAllLists();
+}
+var contactLeadId=null;
+function findAppUrl(l){
+  var lpa=SETTINGS.lpas.find(function(x){return x.name===l.lpa;});
+  if(l.portal_url)return l.portal_url;
+  if(l.ref&&l.ref.indexOf('/')>-1){
+    return 'https://www.google.com/search?q='+encodeURIComponent('"'+l.ref+'" '+l.lpa+' planning application');
+  }
+  return lpa&&lpa.url?lpa.url:'#';
+}
+function openContactModal(id){
+  var l=leadsById[id];if(!l)return;
+  contactLeadId=id;
+  document.getElementById('contactModalTitle').textContent='Contact — '+(l.address||'');
+  document.getElementById('cName').value=l.contact_name||l.applicant||'';
+  document.getElementById('cAddress').value=l.contact_address||'';
+  document.getElementById('contactModal').classList.add('open');
+}
+function closeContactModal(){document.getElementById('contactModal').classList.remove('open');contactLeadId=null;}
+async function saveContactDetails(){
+  if(!contactLeadId)return;
+  await api('/api/leads/'+contactLeadId+'/contact-details',{method:'POST',body:JSON.stringify({
+    contact_name:document.getElementById('cName').value.trim(),
+    contact_address:document.getElementById('cAddress').value.trim()
+  })});
+  closeContactModal();
+  refreshAllLists();
+}
+var currentLetterLead=null;
+function fillTemplate(body,lead){
+  var name=lead.contact_name||lead.applicant||'Homeowner';
+  return body
+    .replace(/\{name\}/g,name)
+    .replace(/\{agent\}/g,lead.agent||'Sir or Madam')
+    .replace(/\{address\}/g,lead.address||'')
+    .replace(/\{project\}/g,(lead.description||'your project').replace(/\.$/,'').toLowerCase().slice(0,140))
+    .replace(/\{ref\}/g,lead.ref||'');
+}
+function generateLetter(id){
+  var lead=leadsById[id];
+  if(!lead)return;
+  currentLetterLead=lead;
+  currentLetterText='';
+  currentLetterAddress=lead.address||'Property';
+  document.getElementById('letterModalTitle').textContent='Letter — '+currentLetterAddress;
+  document.getElementById('letterRecipient').value='homeowner';
+  document.getElementById('letterModal').classList.add('open');
+  populateTemplateChoices();
+}
+function populateTemplateChoices(){
+  var lead=currentLetterLead;
+  if(!lead)return;
+  var recipient=document.getElementById('letterRecipient').value;
+  var warn=document.getElementById('recipientWarn');
+  warn.textContent='';
+  if(recipient==='agent'){
+    if(!lead.agent)warn.textContent='⚠ No agent is recorded on this lead — the letter will open "Dear Sir or Madam".';
+    else if(!lead.agent_address)warn.textContent='⚠ No agent address recorded — the Word letter will need the address added by hand.';
+  }
+  var sel=document.getElementById('letterTemplate');
+  var tpls=SETTINGS.templates||[];
+  var opts='';
+  tpls.forEach(function(t,i){
+    if((t.recipient||'homeowner')===recipient)opts+='<option value="'+i+'">'+esc(t.name)+'</option>';
+  });
+  opts+='<option value="ai">✨ AI bespoke letter</option>';
+  sel.innerHTML=opts;
+  var match=-1;
+  tpls.forEach(function(t,i){
+    if(match===-1&&(t.recipient||'homeowner')===recipient&&t.type&&t.type===lead.app_type)match=i;
+  });
+  if(match===-1)tpls.forEach(function(t,i){if(match===-1&&(t.recipient||'homeowner')===recipient)match=i;});
+  sel.value=match>-1?String(match):'ai';
+  applyLetterTemplate();
+}
+async function applyLetterTemplate(){
+  var lead=currentLetterLead;
+  if(!lead)return;
+  var choice=document.getElementById('letterTemplate').value;
+  document.getElementById('copyConfirm').textContent='';
+  if(choice==='ai'){
+    document.getElementById('letterModalBody').innerHTML='<div class="letter-loading">Generating letter — takes about 10 seconds...</div>';
+    document.getElementById('copyBtn').style.display='none';
+    document.getElementById('gdocsBtn').style.display='none';
+    document.getElementById('wordBtn').style.display='none';
+    try{
+      var data=await api('/api/letter',{method:'POST',body:JSON.stringify({lead:lead})});
+      if(data.error)throw new Error(data.error);
+      currentLetterText=data.letter;
+    }catch(e){
+      document.getElementById('letterModalBody').innerHTML='<div style="color:#A32D2D;padding:1rem">Error: '+esc(e.message)+'</div>';
+      return;
+    }
+  }else{
+    var tpl=(SETTINGS.templates||[])[Number(choice)];
+    if(!tpl)return;
+    currentLetterText=fillTemplate(tpl.body,lead);
+  }
+  document.getElementById('letterModalBody').innerHTML=
+    '<div style="font-size:11px;color:#888;margin-bottom:6px;">✎ Edit the letter below — your changes are used by Copy and Download</div>'+
+    '<textarea id="letterEdit" oninput="currentLetterText=this.value" style="width:100%;min-height:320px;padding:14px;border:1px solid #ddd;border-radius:8px;font-size:13px;line-height:1.7;font-family:inherit;resize:vertical;background:#fafaf8;"></textarea>';
+  document.getElementById('letterEdit').value=currentLetterText;
+  document.getElementById('copyBtn').style.display='';
+  document.getElementById('gdocsBtn').style.display='';
+  document.getElementById('wordBtn').style.display='';
+}
+function closeModal(){document.getElementById('letterModal').classList.remove('open');}
+function handleOverlayClick(e){ if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('open'); }
+function copyLetter(){
+  if(!currentLetterText)return;
+  navigator.clipboard.writeText(currentLetterText).then(function(){
+    document.getElementById('copyConfirm').textContent='✓ Copied to clipboard';
+    setTimeout(function(){document.getElementById('copyConfirm').textContent='';},2500);
+  });
+}
+function buildLetterHtml(){
+  var lead=currentLetterLead||{};
+  var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var toAgent=document.getElementById('letterRecipient').value==='agent';
+  var recipient=esc(toAgent?(lead.agent||''):(lead.contact_name||lead.applicant||'The Homeowner'));
+  var rawAddr=(toAgent?(lead.agent_address||''):(lead.contact_address||lead.address||''));
+  var recAddr=esc(rawAddr).replace(/,\s*/g,'<br>').replace(/\n/g,'<br>');
+  var bodyHtml=currentLetterText.split(/\n\n+/).map(function(p){
+    return '<p style="margin:0 0 12pt;font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5;">'+esc(p).replace(/\n/g,'<br>')+'</p>';
+  }).join('');
+  return '<div style="text-align:center;border-bottom:2pt solid #27500A;padding-bottom:8pt;margin-bottom:24pt;">'+
+      '<div style="font-size:20pt;font-weight:bold;letter-spacing:2pt;color:#27500A;font-family:Calibri,Arial,sans-serif;">CULLINAN HOMES</div>'+
+      '<div style="font-size:9pt;color:#666666;font-family:Calibri,Arial,sans-serif;">Design &amp; Build · Cost-Plus Construction · Surrey and South West London</div>'+
+    '</div>'+
+    '<p style="margin:0 0 12pt;font-family:Calibri,Arial,sans-serif;font-size:11pt;">'+recipient+'<br>'+recAddr+'</p>'+
+    '<p style="margin:0 0 18pt;font-family:Calibri,Arial,sans-serif;font-size:11pt;">'+today+'</p>'+
+    '<p style="margin:0 0 12pt;font-weight:bold;font-family:Calibri,Arial,sans-serif;font-size:11pt;">Re: '+esc(currentLetterAddress)+((currentLetterLead&&currentLetterLead.ref)?' — planning application '+esc(currentLetterLead.ref):'')+'</p>'+
+    bodyHtml;
+}
+async function openInGoogleDocs(){
+  if(!currentLetterText)return;
+  var html=buildLetterHtml();
+  try{
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html],{type:'text/html'}),
+      'text/plain': new Blob([currentLetterText],{type:'text/plain'})
+    })]);
+    document.getElementById('copyConfirm').textContent='✓ Letter copied with formatting — press Ctrl+V in the new Google Doc';
+  }catch(e){
+    try{ await navigator.clipboard.writeText(currentLetterText);
+      document.getElementById('copyConfirm').textContent='✓ Letter text copied — press Ctrl+V in the new Google Doc';
+    }catch(e2){ document.getElementById('copyConfirm').textContent='Copy failed — use the Copy text button, then paste into the Doc'; }
+  }
+  window.open('https://docs.new','_blank');
+  setTimeout(function(){document.getElementById('copyConfirm').textContent='';},8000);
+}
+function xEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function wPara(text,opts){
+  opts=opts||{};
+  var pPr='<w:pPr>'+
+    (opts.center?'<w:jc w:val="center"/>':'')+
+    (opts.border?'<w:pBdr><w:bottom w:val="single" w:sz="16" w:space="4" w:color="27500A"/></w:pBdr>':'')+
+    '<w:spacing w:after="'+(opts.after!==undefined?opts.after:160)+'"/>'+
+    '</w:pPr>';
+  var rPr='<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>'+
+    (opts.bold?'<w:b/>':'')+
+    (opts.color?'<w:color w:val="'+opts.color+'"/>':'')+
+    '<w:sz w:val="'+(opts.size||22)+'"/>'+
+    (opts.spacing?'<w:spacing w:val="'+opts.spacing+'"/>':'')+
+    '</w:rPr>';
+  var lines=String(text||'').split('\n');
+  var runs=lines.map(function(ln,i){
+    return '<w:r>'+rPr+(i>0?'<w:br/>':'')+'<w:t xml:space="preserve">'+xEsc(ln)+'</w:t></w:r>';
+  }).join('');
+  return '<w:p>'+pPr+runs+'</w:p>';
+}
+async function downloadWord(){
+  if(!currentLetterText)return;
+  var lead=currentLetterLead||{};
+  var safeName=currentLetterAddress.replace(/[^a-z0-9 ]/gi,'').replace(/\s+/g,'-').toLowerCase().slice(0,50);
+  var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var toAgent=document.getElementById('letterRecipient').value==='agent';
+  var recipient=toAgent?(lead.agent||''):(lead.contact_name||lead.applicant||'The Homeowner');
+  var rawAddr=(toAgent?(lead.agent_address||''):(lead.contact_address||lead.address||'')).replace(/,\s*/g,'\n');
+  var body='';
+  body+=wPara('CULLINAN HOMES',{center:true,bold:true,size:40,color:'27500A',spacing:40,after:40});
+  body+=wPara('Design & Build  ·  Cost-Plus Construction  ·  Surrey and South West London',{center:true,size:18,color:'666666',border:true,after:480});
+  body+=wPara(recipient+(rawAddr?'\n'+rawAddr:''),{after:240});
+  body+=wPara(today,{after:360});
+  body+=wPara('Re: '+currentLetterAddress+(lead.ref?' — planning application '+lead.ref:''),{bold:true,after:240});
+  currentLetterText.split(/\n\n+/).forEach(function(p){ body+=wPara(p,{after:240}); });
+  var documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+body+
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>'+
+    '</w:body></w:document>';
+  try{
+    var zip=new JSZip();
+    zip.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+    zip.file('_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+    zip.file('word/document.xml',documentXml);
+    var blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='cullinan-letter-'+safeName+'.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert('Word export failed: '+e.message);
+  }
+}
+var pdfBase64=null;
+function clearPdfFile(){
+  pdfBase64=null;
+  document.getElementById('pdfFile').value='';
+  document.getElementById('pdfFileName').textContent='';
+}
+function handlePdfSelect(event){
+  var file=event.target.files[0];
+  if(!file)return;
+  if(file.size>15*1024*1024){setCS('err','PDF is too large (max 15MB).');clearPdfFile();return;}
+  document.getElementById('pasteText').value='';
+  var reader=new FileReader();
+  reader.onload=function(){
+    pdfBase64=reader.result.split(',')[1];
+    document.getElementById('pdfFileName').textContent=file.name+' selected — ready to classify';
+  };
+  reader.onerror=function(){setCS('err','Could not read that PDF, please try again.');clearPdfFile();};
+  reader.readAsDataURL(file);
+}
+async function classifyText(){
+  var text=document.getElementById('pasteText').value.trim();
+  var lpa=document.getElementById('classifyLpa').value;
+  var usingPdf=!!pdfBase64;
+  if(!usingPdf&&text.length<50){setCS('err','Please paste some planning text, or upload a PDF, first.');return;}
+  var btn=document.getElementById('classifyBtn');
+  btn.disabled=true;btn.textContent='Classifying...';
+  setCS('running','Sending to Claude — takes about 30 seconds...');
+  document.getElementById('classifyResults').innerHTML='';
+  document.getElementById('saveAllBtn').style.display='none';
+  try{
+    var body=usingPdf?{pdf_base64:pdfBase64,lpa:lpa}:{text:text,lpa:lpa};
+    var data=await api('/api/classify',{method:'POST',body:JSON.stringify(body)});
+    if(data.error)throw new Error(data.error);
+    classifiedLeads=data.leads.map(function(l){return Object.assign({lpa:lpa},l);});
+    renderClassifyResults();
+    setCS(data.warning?'err':'done',(data.warning?data.warning+' — ':'')+'Found '+classifiedLeads.length+' qualified leads. Review below then save to dashboard.');
+    if(classifiedLeads.length)document.getElementById('saveAllBtn').style.display='';
+  }catch(e){setCS('err','Error: '+e.message);}
+  btn.disabled=false;btn.textContent='Classify applications';
+}
+function setCS(cls,msg){var el=document.getElementById('classifyStatus');el.className='classify-status '+cls;el.textContent=msg;}
+function renderClassifyResults(){
+  if(!classifiedLeads.length){document.getElementById('classifyResults').innerHTML='<div class="empty">No qualified leads found — try pasting more of the page</div>';return;}
+  document.getElementById('classifyResults').innerHTML=classifiedLeads.map(function(l){
+    var sc=scoreColor(l.priority_score||0);
+    var pc=l.planning_likelihood||0;
+    var pcCol=planColor(pc);
+    return '<div class="result-card">'+
+      '<div class="rc-top">'+
+        '<div><div class="rc-address">'+esc(l.address||'Unknown')+'</div>'+
+        '<div class="rc-ref">'+esc(l.ref||'')+(l.date_submitted?' - '+fmtDateUK(l.date_submitted):'')+(l.postcode?' - '+l.postcode:'')+'</div>'+
+        '<div class="tags" style="margin-top:6px"><span class="pill '+typeClass(l.app_type)+'">'+typeLabel(l.app_type)+'</span>'+(l.no_agent?'<span class="pill pill-noagent">No agent</span>':'')+(l.is_new_application?'<span class="pill pill-new">New app</span>':'')+'</div></div>'+
+        '<div style="text-align:right"><div style="font-size:15px;font-weight:600;color:'+sc+'">'+(l.priority_score||0)+'</div><div style="font-size:11px;color:#888">score</div></div>'+
+      '</div>'+
+      '<div class="fin-grid">'+
+        '<div class="fin"><div class="fin-label">Contract value</div><div class="fin-val green">'+fmt(l.contract_value_min)+' - '+fmt(l.contract_value_max)+'</div></div>'+
+        '<div class="fin"><div class="fin-label">Planning likelihood</div><div class="fin-val" style="color:'+pcCol+'">'+pc+'%</div><div class="plan-bar"><div class="plan-fill" style="width:'+pc+'%;background:'+pcCol+'"></div></div></div>'+
+        '<div class="fin"><div class="fin-label">Applicant</div><div class="fin-val" style="font-size:12px">'+esc(l.applicant||'Not listed')+'</div></div>'+
+      '</div>'+
+      ((l.floor_area_sqft||0)>0&&SETTINGS.costPsf&&SETTINGS.chargePsf?
+        '<div style="font-size:12px;color:#27500A;margin-bottom:8px;font-weight:500;">'+(l.floor_area_sqft||0).toLocaleString()+' ft² est → build cost '+fmt((l.floor_area_sqft||0)*SETTINGS.costPsf)+', profit '+fmt((l.floor_area_sqft||0)*(SETTINGS.chargePsf-SETTINGS.costPsf))+'</div>':'')+
+      '<div style="font-size:12px;color:#555;margin-bottom:8px">'+esc((l.description||'').slice(0,150))+'</div>'+
+      '<div style="font-size:12px;color:#888;margin-bottom:8px">Agent: '+esc(l.agent||'None listed')+'</div>'+
+      '<div class="signals">'+(l.signals||[]).map(function(s){return '<div class="sig"><div class="dot"></div><span>'+esc(s)+'</span></div>';}).join('')+'</div>'+
+    '</div>';
+  }).join('');
+}
+async function saveAll(){
+  if(!classifiedLeads.length)return;
+  var btn=document.getElementById('saveAllBtn');
+  btn.disabled=true;btn.textContent='Saving...';
+  try{
+    var data=await api('/api/leads/save',{method:'POST',body:JSON.stringify({leads:classifiedLeads})});
+    setCS('done','Saved '+data.saved+' new leads to dashboard.');
+    loadStats();
+    btn.textContent='Saved!';
+    setTimeout(function(){btn.disabled=false;btn.textContent='Save all to dashboard';},3000);
+  }catch(e){setCS('err','Error saving: '+e.message);btn.disabled=false;btn.textContent='Save all to dashboard';}
+}
+function exportCSV(){window.location.href='/api/export?session='+SESSION;}
+
+// ---------- Land module ----------
+var landDebounceTimer=null;
+function landDebounce(){clearTimeout(landDebounceTimer);landDebounceTimer=setTimeout(loadLand,400);}
+
+var landTimeBreakdownCache=null;
+
+async function loadLandStats(){
+  var s=await api('/api/land/stats');
+  document.getElementById('landStats').innerHTML=
+    '<div class="stat"><div class="stat-label">Total sites</div><div class="stat-val">'+s.total+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Letters sent</div><div class="stat-val">'+s.lettersSent+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Response rate (overall)</div><div class="stat-val">'+s.contactRate+'%</div></div>'+
+    '<div class="stat"><div class="stat-label">Avg days to respond</div><div class="stat-val">'+(s.avgDaysToResponse!=null?s.avgDaysToResponse:'—')+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Overdue actions</div><div class="stat-val" style="color:'+(s.overdueCount>0?'#A32D2D':'#1a1a1a')+'">'+s.overdueCount+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Interested</div><div class="stat-val">'+s.interested+'</div></div>'+
+    '<div class="stat"><div class="stat-label">Converted</div><div class="stat-val">'+s.converted+'</div></div>'+
+    '<div class="stat"><div class="stat-label">No longer pursuing</div><div class="stat-val">'+s.dead+'</div></div>';
+  renderScorecard(s.scorecard||[]);
+  landTimeBreakdownCache=s.timeBreakdown||{annual:[],quarterly:[]};
+  renderTimeBreakdownFromCache();
+}
+
+function renderTimeBreakdownFromCache(){
+  if(!landTimeBreakdownCache)return;
+  var mode=document.getElementById('timeBreakdownMode').value;
+  var rows=landTimeBreakdownCache[mode]||[];
+  var wrap=document.getElementById('timeBreakdownWrap');
+  if(!rows.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  var html='<table class="scorecard-table"><thead><tr><th>'+(mode==='annual'?'Year':'Quarter')+'</th><th>Letters sent</th><th>Response rate</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    if(r.rate==null){
+      html+='<tr><td class="scorecard-seg">'+esc(r.label)+'</td><td>'+r.sent+'</td><td><span class="scorecard-empty">—</span></td></tr>';
+      return;
+    }
+    var color=r.rate>=40?'#27500A':r.rate>=15?'#BA7517':'#A32D2D';
+    html+='<tr><td class="scorecard-seg">'+esc(r.label)+'</td><td>'+r.sent+'</td><td class="scorecard-cell"><div class="scorecard-bar-bg"><div class="scorecard-bar-fill" style="width:'+r.rate+'%;background:'+color+';"></div><div class="scorecard-bar-label">'+r.rate+'% ('+r.responded+'/'+r.sent+')</div></div></td></tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById('timeBreakdown').innerHTML=html;
+}
+
+function renderScorecard(rows){
+  var wrap=document.getElementById('scorecardWrap');
+  if(!rows.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  var html='<table class="scorecard-table"><thead><tr><th>Segment</th><th>Letter 1</th><th>Letter 2</th><th>Letter 3</th><th>Letter 4</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    html+='<tr><td class="scorecard-seg">'+esc(r.segment)+'</td>'+
+      r.stages.map(function(st){
+        if(st.sent===0)return '<td class="scorecard-cell"><span class="scorecard-empty">not sent</span></td>';
+        var pct=st.rate;
+        var color=pct>=40?'#27500A':pct>=15?'#BA7517':'#A32D2D';
+        return '<td class="scorecard-cell"><div class="scorecard-bar-bg"><div class="scorecard-bar-fill" style="width:'+pct+'%;background:'+color+';"></div>'+
+          '<div class="scorecard-bar-label">'+pct+'% ('+st.responded+'/'+st.sent+')</div></div></td>';
+      }).join('')+
+    '</tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById('scorecard').innerHTML=html;
+}
+
+var LAND_STATUS_LABELS={active:'Active',interested:'Interested',dead:'No longer pursuing',converted:'Converted'};
+var landSelected=new Set();
+
+async function loadLand(){
+  var params=new URLSearchParams();
+  var search=document.getElementById('landSearch').value.trim();
+  var status=document.getElementById('landStatusFilter').value;
+  var due=document.getElementById('landDueFilter').value;
+  var area=document.getElementById('landAreaFilter').value;
+  var council=document.getElementById('landCouncilFilter').value;
+  if(search)params.set('search',search);
+  if(status!=='all')params.set('status',status);
+  if(due!=='all')params.set('due',due);
+  if(area!=='all')params.set('area',area);
+  if(council!=='all')params.set('council',council);
+  var data=await api('/api/land?'+params.toString());
+  refreshLandFilterOptions();
+  var visibleIds=new Set(data.sites.map(function(s){return s.id;}));
+  landSelected.forEach(function(id){ if(!visibleIds.has(id)) landSelected.delete(id); });
+  renderLandList(data.sites);
+  updateLandBatchBar();
+}
+
+// Always rebuilt from the full unfiltered dataset via /api/land/facets — NOT from whatever
+// rows happen to be on screen — so the dropdowns show every area/council that exists, no
+// matter which filter combination is currently applied.
+async function refreshLandFilterOptions(){
+  var facets=await api('/api/land/facets');
+  var areaSel=document.getElementById('landAreaFilter'), councilSel=document.getElementById('landCouncilFilter');
+  var keepArea=areaSel.value, keepCouncil=councilSel.value;
+  areaSel.innerHTML='<option value="all">All areas</option>'+facets.areas.map(function(a){return '<option value="'+esc(a)+'">'+esc(a)+'</option>';}).join('');
+  areaSel.value=facets.areas.indexOf(keepArea)>-1?keepArea:'all';
+  councilSel.innerHTML='<option value="all">All councils</option>'+facets.councils.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('');
+  councilSel.value=facets.councils.indexOf(keepCouncil)>-1?keepCouncil:'all';
+}
+
+function fmtDate(d){ return d?d:'—'; }
+
+var landEditingId=null;
+
+function toggleLandEdit(id){
+  landEditingId = (landEditingId===id) ? null : id;
+  loadLand();
+}
+
+var landLastSites=[];
+function renderLandList(sites){
+  landLastSites=sites;
+  var el=document.getElementById('landList');
+  if(!sites.length){el.innerHTML='<div class="empty">No land sites yet. Click "+ Add site" to start tracking outreach.</div>';return;}
+  el.innerHTML=sites.map(function(s){
+    return landEditingId===s.id ? renderLandCardEdit(s) : renderLandCardView(s);
+  }).join('');
+}
+
+// Display-only UK date formatting (dd/mm/yyyy). The underlying stored value and all <input
+// type=date> fields stay ISO (yyyy-mm-dd) — that's what the browser and the API need — this
+// is purely for the text shown in chips and card meta.
+function fmtUK(dateStr){
+  if(!dateStr)return '';
+  var m=dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m)return dateStr;
+  return m[3]+'/'+m[2]+'/'+m[1];
+}
+
+function renderLandCardView(s){
+  var na=s.nextAction;
+  var naClass=na.overdue?'overdue':(na.label.indexOf('due')>-1?'upcoming':'ok');
+  var letterChipsHtml=[1,2,3,4].map(function(n){
+    var date=s['letter'+n+'_date'];
+    return date
+      ? '<div class="cad-chip done" onclick="clearLandDate('+s.id+',\'letter'+n+'_date\')" title="Sent '+fmtUK(date)+' — click to undo">Letter '+n+' ✓ '+fmtUK(date)+'</div>'
+      : '<div class="cad-chip" onclick="logLandLetter('+s.id+','+n+')" title="Click to log as sent today">Letter '+n+'</div>';
+  }).join('');
+  var knockChipsHtml=[1,2].map(function(n){
+    var date=s['doorknock'+n+'_date'];
+    return date
+      ? '<div class="cad-chip done" onclick="clearLandDate('+s.id+',\'doorknock'+n+'_date\')" title="Knocked '+fmtUK(date)+' — click to undo">Door knock '+n+' ✓ '+fmtUK(date)+'</div>'
+      : '<div class="cad-chip" onclick="logLandKnock('+s.id+','+n+')" title="Click to log as done today">Door knock '+n+'</div>';
+  }).join('');
+  var respondedChip=s.responded
+    ? '<div class="cad-chip done" onclick="unmarkLandResponse('+s.id+')" title="Responded '+fmtUK(s.response_date)+' — click to undo">Responded ✓ '+fmtUK(s.response_date)+'</div>'
+    : '<div class="cad-chip" onclick="logLandResponse('+s.id+')" title="Click to mark as responded">Mark responded</div>';
+  return '<div class="land-card">'+
+    '<div class="land-top">'+
+      '<div style="display:flex;gap:10px;align-items:flex-start;">'+
+        '<input type="checkbox" style="margin-top:4px;" '+(landSelected.has(s.id)?'checked':'')+' onchange="toggleLandSelect('+s.id+',this.checked)">'+
+        '<div><div class="land-address">'+esc(s.address)+'</div>'+
+        '<div class="land-meta">'+esc(s.type||'—')+' · '+esc(s.area||'—')+' · '+esc(s.council||'—')+' · added '+fmtUK(s.date_added)+'</div></div>'+
+      '</div>'+
+      '<div class="next-action '+naClass+'">'+esc(na.label)+'</div>'+
+    '</div>'+
+    '<div class="cadence-row">'+letterChipsHtml+knockChipsHtml+respondedChip+'</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
+      '<select class="land-status-select" onchange="setLandStatus('+s.id+',this.value)">'+
+        Object.keys(LAND_STATUS_LABELS).map(function(k){return '<option value="'+k+'"'+(s.status===k?' selected':'')+'>'+LAND_STATUS_LABELS[k]+'</option>';}).join('')+
+      '</select>'+
+      '<a class="act-btn-map" target="_blank" href="https://www.google.com/maps/search/'+encodeURIComponent(s.address)+'">Map</a>'+
+      '<button class="act-btn" onclick="toggleLandEdit('+s.id+')">Edit</button>'+
+      '<button class="act-btn" style="color:#A32D2D" onclick="deleteLandSite('+s.id+')">Delete</button>'+
+    '</div>'+
+    '<textarea class="land-notes" placeholder="Notes — owner contact details, constraints, offers made..." onblur="saveLandNotes('+s.id+',this.value)">'+esc(s.notes||'')+'</textarea>'+
+  '</div>';
+}
+
+function dateInput(id,field,value){
+  return '<div style="display:flex;align-items:center;gap:4px;">'+
+    '<span style="font-size:11px;color:#888;min-width:80px;">'+field.label+'</span>'+
+    '<input type="date" id="'+field.key+'_'+id+'" value="'+esc(value||'')+'" style="padding:5px 7px;border:1px solid #ddd;border-radius:6px;font-size:12px;">'+
+  '</div>';
+}
+
+function renderLandCardEdit(s){
+  var dateFields=[
+    {key:'letter1_date',label:'Letter 1'},{key:'letter2_date',label:'Letter 2'},
+    {key:'letter3_date',label:'Letter 3'},{key:'letter4_date',label:'Letter 4'},
+    {key:'doorknock1_date',label:'Door knock 1'},{key:'doorknock2_date',label:'Door knock 2'}
+  ];
+  return '<div class="land-card" style="border-color:#1a1a1a;">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">'+
+      '<div style="grid-column:1/-1;"><div style="font-size:11px;color:#888;margin-bottom:3px;">Address</div><input type="text" id="editAddress_'+s.id+'" value="'+esc(s.address)+'" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></div>'+
+      '<div><div style="font-size:11px;color:#888;margin-bottom:3px;">Type</div><input type="text" id="editType_'+s.id+'" value="'+esc(s.type||'')+'" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></div>'+
+      '<div><div style="font-size:11px;color:#888;margin-bottom:3px;">Area</div><input type="text" id="editArea_'+s.id+'" value="'+esc(s.area||'')+'" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></div>'+
+      '<div style="grid-column:1/-1;"><div style="font-size:11px;color:#888;margin-bottom:3px;">Council</div><input type="text" id="editCouncil_'+s.id+'" value="'+esc(s.council||'')+'" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">'+
+      dateFields.map(function(f){return dateInput(s.id,f,s[f.key]);}).join('')+
+    '</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<button class="btn btn-green" onclick="saveLandEdit('+s.id+')">Save</button>'+
+      '<button class="btn" onclick="toggleLandEdit('+s.id+')">Cancel</button>'+
+    '</div>'+
+  '</div>';
+}
+
+async function saveLandEdit(id){
+  var payload={
+    address:document.getElementById('editAddress_'+id).value.trim(),
+    type:document.getElementById('editType_'+id).value.trim(),
+    area:document.getElementById('editArea_'+id).value.trim(),
+    council:document.getElementById('editCouncil_'+id).value.trim()
+  };
+  if(!payload.address){alert('Address cannot be empty');return;}
+  ['letter1_date','letter2_date','letter3_date','letter4_date','doorknock1_date','doorknock2_date'].forEach(function(k){
+    payload[k]=document.getElementById(k+'_'+id).value||'';
+  });
+  await api('/api/land/'+id,{method:'POST',body:JSON.stringify(payload)});
+  landEditingId=null;
+  loadLand();
+  loadLandStats();
+}
+
+async function logLandLetter(id,n){ await api('/api/land/'+id+'/letter',{method:'POST',body:JSON.stringify({n:n})}); loadLand(); loadLandStats(); }
+async function logLandKnock(id,n){ await api('/api/land/'+id+'/doorknock',{method:'POST',body:JSON.stringify({n:n})}); loadLand(); loadLandStats(); }
+async function logLandResponse(id){ await api('/api/land/'+id+'/response',{method:'POST',body:JSON.stringify({responded:true})}); loadLand(); loadLandStats(); }
+async function unmarkLandResponse(id){ await api('/api/land/'+id+'/response',{method:'POST',body:JSON.stringify({responded:false})}); loadLand(); loadLandStats(); }
+async function clearLandDate(id,field){ var p={}; p[field]=''; await api('/api/land/'+id,{method:'POST',body:JSON.stringify(p)}); loadLand(); loadLandStats(); }
+async function setLandStatus(id,status){ await api('/api/land/'+id+'/status',{method:'POST',body:JSON.stringify({status:status})}); loadLand(); loadLandStats(); }
+async function saveLandNotes(id,notes){ await api('/api/land/'+id,{method:'POST',body:JSON.stringify({notes:notes})}); }
+async function deleteLandSite(id){ if(!confirm('Delete this site? This cannot be undone.'))return; await api('/api/land/'+id,{method:'DELETE'}); loadLand(); loadLandStats(); }
+function landExportCSV(){window.location.href='/api/land/export?session='+SESSION;}
+
+// ---------- Batch selection & actions ----------
+function toggleLandSelect(id,checked){
+  if(checked)landSelected.add(id); else landSelected.delete(id);
+  updateLandBatchBar();
+}
+function toggleSelectAllLand(checked){
+  landLastSites.forEach(function(s){
+    if(checked)landSelected.add(s.id); else landSelected.delete(s.id);
+  });
+  renderLandList(landLastSites);
+  updateLandBatchBar();
+}
+function updateLandBatchBar(){
+  var bar=document.getElementById('landBatchBar');
+  if(landSelected.size===0){bar.style.display='none';return;}
+  bar.style.display='flex';
+  document.getElementById('landBatchCount').textContent=landSelected.size+' selected';
+  var dateInput=document.getElementById('landBatchDate');
+  if(!dateInput.value)dateInput.value=new Date().toISOString().split('T')[0];
+}
+function clearLandSelection(){ landSelected.clear(); loadLand(); }
+async function applyBatchLetter(){
+  var n=Number(document.getElementById('landBatchLetterN').value);
+  var date=document.getElementById('landBatchDate').value||undefined;
+  var ids=Array.from(landSelected);
+  if(!ids.length)return;
+  var res=await api('/api/land/bulk/letter',{method:'POST',body:JSON.stringify({ids:ids,n:n,date:date})});
+  document.getElementById('landImportStatus').style.color='#27500A';
+  document.getElementById('landImportStatus').textContent='Logged letter '+n+' as sent on '+res.date+' for '+res.updated+' sites.';
+  landSelected.clear();
+  loadLand(); loadLandStats();
+}
+async function applyBatchKnock(){
+  var n=Number(document.getElementById('landBatchKnockN').value);
+  var date=document.getElementById('landBatchDate').value||undefined;
+  var ids=Array.from(landSelected);
+  if(!ids.length)return;
+  var res=await api('/api/land/bulk/doorknock',{method:'POST',body:JSON.stringify({ids:ids,n:n,date:date})});
+  document.getElementById('landImportStatus').style.color='#27500A';
+  document.getElementById('landImportStatus').textContent='Logged door knock '+n+' for '+res.updated+' sites.';
+  landSelected.clear();
+  loadLand(); loadLandStats();
+}
+async function applyBatchDelete(){
+  var ids=Array.from(landSelected);
+  if(!ids.length)return;
+  if(!confirm('Delete '+ids.length+' selected site(s)? This cannot be undone.'))return;
+  await api('/api/land/bulk/delete',{method:'POST',body:JSON.stringify({ids:ids})});
+  landSelected.clear();
+  loadLand(); loadLandStats();
+}
+
+function openAddLandModal(){
+  document.getElementById('landNewAddress').value='';
+  document.getElementById('landNewType').value='';
+  document.getElementById('landNewArea').value='';
+  document.getElementById('landNewCouncil').value='';
+  document.getElementById('landNewNotes').value='';
+  document.getElementById('landModal').classList.add('open');
+}
+function closeLandModal(){document.getElementById('landModal').classList.remove('open');}
+async function saveNewLandSite(){
+  var address=document.getElementById('landNewAddress').value.trim();
+  if(!address){alert('Address is required');return;}
+  await api('/api/land',{method:'POST',body:JSON.stringify({
+    address:address,
+    type:document.getElementById('landNewType').value.trim(),
+    area:document.getElementById('landNewArea').value.trim(),
+    council:document.getElementById('landNewCouncil').value.trim(),
+    notes:document.getElementById('landNewNotes').value.trim()
+  })});
+  closeLandModal();
+  loadLand();
+  loadLandStats();
+}
+
+// ---------- CSV import ----------
+// UK-style dates (dd/mm/yyyy or d/m/yy) -> yyyy-mm-dd. Leaves already-ISO dates untouched.
+// Returns '' for blank/unrecognised cells rather than guessing.
+function parseUkDate(v){
+  if(!v)return '';
+  v=String(v).trim();
+  if(!v)return '';
+  var iso=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(iso)return v;
+  var m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if(!m)return '';
+  var day=m[1].padStart(2,'0'), month=m[2].padStart(2,'0'), year=m[3];
+  if(year.length===2)year='20'+year;
+  return year+'-'+month+'-'+day;
+}
+
+// Matches a spreadsheet header to a known field even if the wording/casing/punctuation differs
+// slightly from our template (e.g. "1st Letter Sent" / "1st letter" / "Letter 1" all match).
+function matchHeader(headers,patterns){
+  for(var i=0;i<headers.length;i++){
+    var h=headers[i].toLowerCase().replace(/[^a-z0-9]/g,'');
+    for(var j=0;j<patterns.length;j++){ if(h.indexOf(patterns[j])>-1) return headers[i]; }
+  }
+  return null;
+}
+
+function handleLandCsvSelect(evt){
+  var file=evt.target.files[0];
+  if(!file)return;
+  var statusEl=document.getElementById('landImportStatus');
+  statusEl.style.color='#888';
+  statusEl.textContent='Reading '+file.name+'...';
+  Papa.parse(file,{
+    header:true,
+    skipEmptyLines:true,
+    complete:async function(results){
+      try{ await prepareLandCsvPreview(results.data); }
+      catch(e){ statusEl.style.color='#A32D2D'; statusEl.textContent='Import failed: '+e.message; }
+      evt.target.value='';
+    },
+    error:function(err){ statusEl.style.color='#A32D2D'; statusEl.textContent='Could not read file: '+err.message; }
+  });
+}
+
+var landPendingImportSites=null;
+
+async function prepareLandCsvPreview(rows){
+  var statusEl=document.getElementById('landImportStatus');
+  statusEl.textContent='';
+  if(!rows.length){statusEl.style.color='#A32D2D';statusEl.textContent='No rows found in that file.';return;}
+  var headers=Object.keys(rows[0]);
+  var map={
+    type: matchHeader(headers,['type']),
+    address: matchHeader(headers,['address']),
+    area: matchHeader(headers,['area']),
+    council: matchHeader(headers,['council']),
+    letter1: matchHeader(headers,['1stletter','letter1']),
+    letter2: matchHeader(headers,['2ndletter','letter2']),
+    letter3: matchHeader(headers,['3rdletter','letter3']),
+    letter4: matchHeader(headers,['4thletter','letter4']),
+    notes: matchHeader(headers,['statusnotes','notes','status'])
+  };
+  var doorknockCols=headers.filter(function(h){return h.toLowerCase().replace(/[^a-z0-9]/g,'').indexOf('doorknock')>-1;});
+  if(!map.address){statusEl.style.color='#A32D2D';statusEl.textContent='Could not find an Address column — check your CSV headers.';return;}
+  var sites=rows.map(function(r){
+    var knockDates=doorknockCols.map(function(c){return parseUkDate(r[c]);}).filter(Boolean);
+    return {
+      type: map.type?(r[map.type]||'').trim():'',
+      address: (r[map.address]||'').trim(),
+      area: map.area?(r[map.area]||'').trim():'',
+      council: map.council?(r[map.council]||'').trim():'',
+      letter1_date: map.letter1?parseUkDate(r[map.letter1]):'',
+      letter2_date: map.letter2?parseUkDate(r[map.letter2]):'',
+      letter3_date: map.letter3?parseUkDate(r[map.letter3]):'',
+      letter4_date: map.letter4?parseUkDate(r[map.letter4]):'',
+      doorknock1_date: knockDates[0]||'',
+      doorknock2_date: knockDates[1]||'',
+      notes: map.notes?(r[map.notes]||'').trim():''
+    };
+  }).filter(function(s){return s.address;});
+  landPendingImportSites=sites;
+  var preview=await api('/api/land/import/preview',{method:'POST',body:JSON.stringify({sites:sites})});
+  showImportPreview(preview, headers, map);
+}
+
+function showImportPreview(preview, headers, map){
+  var unmatched=[];
+  if(!map.type)unmatched.push('Type');
+  if(!map.area)unmatched.push('Area');
+  if(!map.council)unmatched.push('Council');
+  if(!map.letter1)unmatched.push('Letter 1');
+  document.getElementById('importPreviewSummary').innerHTML=
+    '<b>'+preview.willImportCount+'</b> new site(s) will be added.'+
+    (preview.duplicateCount?' <b>'+preview.duplicateCount+'</b> skipped as already in the list (matched by address).':'')+
+    (preview.invalidCount?' <b>'+preview.invalidCount+'</b> row(s) skipped — no address.':'');
+  var warnHtml='';
+  if(unmatched.length) warnHtml+='<div style="font-size:12px;color:#BA7517;margin-bottom:4px;">Couldn\'t find a column for: '+unmatched.join(', ')+' — these will be left blank for every row. Check your CSV headers if that\'s not right.</div>';
+  if(preview.duplicateCount) warnHtml+='<div style="font-size:12px;color:#888;">Skipped (already imported): '+preview.duplicates.slice(0,5).map(esc).join(', ')+(preview.duplicateCount>5?' and '+(preview.duplicateCount-5)+' more':'')+'</div>';
+  document.getElementById('importPreviewWarnings').innerHTML=warnHtml;
+  var sampleHtml='<table class="scorecard-table"><thead><tr><th>Address</th><th>Type</th><th>Area</th><th>Letter 1</th></tr></thead><tbody>'+
+    preview.sample.map(function(s){return '<tr><td>'+esc(s.address)+'</td><td>'+esc(s.type||'—')+'</td><td>'+esc(s.area||'—')+'</td><td>'+fmtUK(s.letter1_date)+'</td></tr>';}).join('')+
+    '</tbody></table>';
+  document.getElementById('importPreviewSample').innerHTML=preview.sample.length?sampleHtml:'<div class="empty" style="padding:1rem;">Nothing new to import from this file.</div>';
+  document.getElementById('importConfirmBtn').disabled=preview.willImportCount===0;
+  document.getElementById('importConfirmBtn').style.opacity=preview.willImportCount===0?'0.5':'1';
+  document.getElementById('importPreviewModal').classList.add('open');
+}
+
+function closeImportPreview(){
+  document.getElementById('importPreviewModal').classList.remove('open');
+  landPendingImportSites=null;
+}
+
+async function confirmLandImport(){
+  if(!landPendingImportSites)return;
+  var sitesToImport=landPendingImportSites;
+  var statusEl=document.getElementById('landImportStatus');
+  closeImportPreview();
+  statusEl.style.color='#888';
+  statusEl.textContent='Importing '+sitesToImport.length+' sites...';
+  var result=await api('/api/land/import',{method:'POST',body:JSON.stringify({sites:sitesToImport})});
+  if(result.error || typeof result.imported!=='number'){
+    statusEl.style.color='#A32D2D';
+    statusEl.textContent='Import failed: '+(result.error||'unexpected response from server')+'. Nothing was added — try again.';
+    return;
+  }
+  statusEl.style.color='#27500A';
+  statusEl.innerHTML='Imported '+result.imported+' sites'+(result.skipped?(', skipped '+result.skipped):'')+'.'+
+    (result.batchId?' <button class="act-btn" style="margin-left:8px;" onclick="undoLandImport(\''+result.batchId+'\')">Undo this import</button>':'');
+  loadLand();
+  loadLandStats();
+}
+
+async function undoLandImport(batchId){
+  if(!confirm('Remove every site from this import? This cannot be undone.'))return;
+  var result=await api('/api/land/import/'+batchId,{method:'DELETE'});
+  var statusEl=document.getElementById('landImportStatus');
+  statusEl.style.color='#888';
+  statusEl.textContent='Removed '+result.deleted+' site(s) from that import.';
+  document.getElementById('recentImportsPanel').style.display='none';
+  loadLand();
+  loadLandStats();
+}
+
+async function resetLandData(){
+  var typed=prompt('This permanently deletes every Land site — all letters, door knocks, notes, everything. This cannot be undone.\n\nType RESET to confirm:');
+  if(typed!=='RESET'){ if(typed!==null) alert('Not confirmed — nothing was deleted.'); return; }
+  var result=await api('/api/land/reset',{method:'DELETE'});
+  landSelected.clear();
+  var statusEl=document.getElementById('landImportStatus');
+  statusEl.style.color='#888';
+  statusEl.textContent='Deleted '+result.deleted+' site(s). The Land tab is now empty.';
+  loadLand();
+  loadLandStats();
+}
+async function toggleRecentImports(){
+  var panel=document.getElementById('recentImportsPanel');
+  if(panel.style.display==='block'){panel.style.display='none';return;}
+  var data=await api('/api/land/import/batches');
+  if(!data.batches.length){
+    panel.innerHTML='<span style="color:#888;">No CSV imports yet.</span>';
+  }else{
+    panel.innerHTML='<div style="font-weight:600;margin-bottom:8px;">Recent imports</div>'+
+      data.batches.map(function(b){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0ec;">'+
+          '<span>'+fmtUK(b.date_added)+' — '+b.n+' site(s)</span>'+
+          '<button class="act-btn" style="color:#A32D2D" onclick="undoLandImport(\''+b.import_batch+'\')">Undo</button>'+
+        '</div>';
+      }).join('');
+  }
+  panel.style.display='block';
+}
+
+if(SESSION){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';loadSettings().then(function(){loadStats();loadLeads();});}
+</script>
+</body>
+</html>
